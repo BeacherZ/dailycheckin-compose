@@ -218,6 +218,36 @@ DEFAULT_META = {
     "verify": None,
     "credential": "cookie",
     "howto": "整块复制该站点登录后的 cookie 即可",
+    "site": "",
+    "logo": "",
+}
+
+# --------------------------------------------------------------------------- #
+# 官网地址与 LOGO
+# --------------------------------------------------------------------------- #
+# LOGO 直接引用**各站官网自己的 favicon**：
+#   * 不依赖任何第三方图标服务（Google 的 favicon 接口在国内不可达）
+#   * 前端一律带 `referrerpolicy="no-referrer"`，绕开部分 CDN 的防盗链判断
+#   * 加载不出来会自动回退成 emoji，不会出现破图
+# 这里每个地址都实测过能返回图片；V2EX 在国内需要代理才能访问，
+# 所以它的 LOGO 在无代理环境下会自然回退成 emoji。
+SITE_LINKS: dict[str, dict[str, str]] = {
+    "BILIBILI": {"site": "https://www.bilibili.com/", "logo": "https://www.bilibili.com/favicon.ico"},
+    "TIEBA": {"site": "https://tieba.baidu.com/", "logo": "https://tieba.baidu.com/favicon.ico"},
+    "YOUDAO": {"site": "https://note.youdao.com/", "logo": "https://note.youdao.com/favicon.ico"},
+    "IQIYI": {"site": "https://www.iqiyi.com/", "logo": "https://www.iqiyi.com/favicon.ico"},
+    "V2EX": {"site": "https://www.v2ex.com/", "logo": "https://www.v2ex.com/favicon.ico"},
+    "SMZDM": {"site": "https://www.smzdm.com/", "logo": "https://www.smzdm.com/favicon.ico"},
+    "BAIDUWP": {"site": "https://pan.baidu.com/", "logo": "https://www.baidu.com/favicon.ico"},
+    "AOLAXING": {"site": "https://www.100bt.com/", "logo": "https://www.100bt.com/favicon.ico"},
+    "ENSHAN": {"site": "https://www.right.com.cn/forum/", "logo": "https://www.right.com.cn/forum/favicon.ico"},
+    "FNNASCLUB": {"site": "https://club.fnnas.com/", "logo": "https://club.fnnas.com/favicon.ico"},
+    "KGQQ": {"site": "https://kg.qq.com/", "logo": "https://kg.qq.com/favicon.ico"},
+    "ALIYUN": {"site": "https://www.alipan.com/", "logo": "https://www.alipan.com/favicon.ico"},
+    "IMAOTAI": {"site": "https://www.moutai519.com.cn/", "logo": "https://www.moutai519.com.cn/favicon.ico"},
+    "ACFUN": {"site": "https://www.acfun.cn/", "logo": "https://www.acfun.cn/favicon.ico"},
+    "MIMOTION": {"site": "https://www.mi.com/", "logo": "https://www.mi.com/favicon.ico"},
+    "BAIDU": {"site": "https://ziyuan.baidu.com/", "logo": "https://ziyuan.baidu.com/favicon.ico"},
 }
 
 
@@ -278,6 +308,7 @@ def all_sites() -> list[dict]:
         meta = dict(DEFAULT_META)
         known = SITE_META.get(key, {})
         meta.update({k: v for k, v in known.items() if v is not None})
+        links = SITE_LINKS.get(key, {})
         out.append(
             {
                 "key": key,
@@ -290,6 +321,8 @@ def all_sites() -> list[dict]:
                 "fields": list(meta.get("fields") or []),
                 "verify": meta.get("verify"),
                 "howto": meta.get("howto", ""),
+                "site": links.get("site", ""),
+                "logo": links.get("logo", ""),
                 "known": key in SITE_META,
             }
         )

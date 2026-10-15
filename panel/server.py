@@ -15,10 +15,13 @@ import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import catalog, cookies as ck, paths, runner, schedule, store, verify
+from . import auth, catalog, cookies as ck, paths, runner, schedule, store, verify
 
-PANEL_VERSION = "1.0.0"
+PANEL_VERSION = "2.0.0"
 MAX_BODY = 4 * 1024 * 1024
+
+# 不需要登录就能访问的接口：健康检查（给容器 healthcheck 用）与登录/首次设置本身
+PUBLIC_ROUTES = {"h_health", "h_auth_status", "h_auth_setup", "h_auth_login"}
 
 ROUTES: list[tuple[str, re.Pattern, str]] = []
 
@@ -102,10 +105,12 @@ def build_state() -> dict:
         "panel": {
             "title": paths.TITLE,
             "version": PANEL_VERSION,
-            "token_required": bool(paths.TOKEN),
             "home": paths.HOME,
             "config_path": paths.CONFIG_PATH,
             "tz": paths.TZ,
+            "token_bypass": bool(paths.TOKEN),
+            "user": auth.username(),
+            "auth_since": auth.created_at(),
         },
         "engine": {**runner.probe_engine(), "version": engine_version()},
         "sites": sites,
@@ -151,6 +156,77 @@ def local_check(key: str, account: dict) -> dict:
 @route("GET", r"/api/health")
 def h_health(h):
     return {"ok": True, "time": time.time(), "version": PANEL_VERSION}
+
+
+# --------------------------------------------------------------------------- #
+# 后台账号密码
+# --------------------------------------------------------------------------- #
+@route("GET", r"/api/auth/status")
+def h_auth_status(h):
+    return {
+        "initialized": auth.is_initialized(),
+        "logged_in": bool(h.session_user()),
+        "username": auth.username(),
+        "min_user": auth.MIN_USER,
+        "max_user": auth.MAX_USER,
+        "min_pass": auth.MIN_PASS,
+        "max_pass": auth.MAX_PASS,
+        "auth_path": paths.AUTH_PATH,
+        "token_bypass": bool(paths.TOKEN),
+    }
+
+
+@route("POST", r"/api/auth/setup")
+def h_auth_setup(h):
+    body = h.body()
+    try:
+        auth.setup(str(body.get("username") or ""), str(body.get("password") or ""))
+    except ValueError as exc:
+        raise HttpError(400, str(exc)) from exc
+    h.set_session(auth.create_session())
+    return {"ok": True, "username": auth.username()}
+
+
+@route("POST", r"/api/auth/login")
+def h_auth_login(h):
+    ip = h.client_ip()
+    wait = auth.throttled(ip)
+    if wait:
+        raise HttpError(429, f"尝试过于频繁，请 {wait} 秒后再试")
+    body = h.body()
+    if not auth.is_initialized():
+        raise HttpError(400, "后台还没有设置账号密码")
+    if not auth.check(str(body.get("username") or ""), str(body.get("password") or "")):
+        auth.note_failure(ip)
+        raise HttpError(401, "账号或密码不正确")
+    auth.clear_failures(ip)
+    h.set_session(auth.create_session())
+    return {"ok": True, "username": auth.username()}
+
+
+@route("POST", r"/api/auth/logout")
+def h_auth_logout(h):
+    h.set_session("", clear=True)
+    return {"ok": True}
+
+
+@route("POST", r"/api/auth/credentials")
+def h_auth_credentials(h):
+    body = h.body()
+    new_user = body.get("username")
+    new_password = str(body.get("new_password") or "")
+    if not new_password and body.get("confirm_password"):
+        new_password = str(body.get("confirm_password"))
+    try:
+        auth.change_credentials(
+            str(body.get("old_password") or ""),
+            None if new_user is None else str(new_user),
+            new_password or None,
+        )
+    except ValueError as exc:
+        raise HttpError(400, str(exc)) from exc
+    h.set_session(auth.create_session())
+    return {"ok": True, "username": auth.username(), "password_changed": bool(new_password)}
 
 
 @route("GET", r"/api/state")
@@ -380,9 +456,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.command != "HEAD":
             self.wfile.write(payload)
 
-    def _json(self, status: int, data):
+    def _json(self, status: int, data, extra: dict | None = None):
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
-        self._send(status, body, "application/json; charset=utf-8")
+        self._send(status, body, "application/json; charset=utf-8", extra)
 
     def body(self) -> dict:
         try:
@@ -400,18 +476,55 @@ class Handler(BaseHTTPRequestHandler):
             raise HttpError(400, f"请求体不是合法 JSON：{exc}") from exc
         return data if isinstance(data, dict) else {"_": data}
 
-    def _authorized(self) -> bool:
+    # ----- 认证 -----
+    def client_ip(self) -> str:
+        fwd = (self.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
+        return fwd or (self.client_address[0] if self.client_address else "?")
+
+    def cookie(self, name: str) -> str:
+        raw = self.headers.get("Cookie") or ""
+        for part in raw.split(";"):
+            key, _, value = part.strip().partition("=")
+            if key == name:
+                return value
+        return ""
+
+    def session_user(self) -> str | None:
+        return auth.read_session(self.cookie(auth.COOKIE_NAME))
+
+    def _secure_cookie(self) -> bool:
+        proto = (self.headers.get("X-Forwarded-Proto") or "").split(",")[0].strip().lower()
+        return proto == "https"
+
+    def set_session(self, ticket: str, clear: bool = False) -> None:
+        parts = [f"{auth.COOKIE_NAME}={ticket}", "Path=/", "HttpOnly", "SameSite=Lax"]
+        parts.append("Max-Age=0" if clear else f"Max-Age={auth.SESSION_TTL}")
+        if self._secure_cookie():
+            parts.append("Secure")
+        self._pending_cookie = "; ".join(parts)
+
+    def _token_ok(self) -> bool:
         if not paths.TOKEN:
-            return True
-        header = self.headers.get("X-Panel-Token") or ""
-        if header == paths.TOKEN:
+            return False
+        if (self.headers.get("X-Panel-Token") or "") == paths.TOKEN:
             return True
         return self.query.get("token", [""])[0] == paths.TOKEN
+
+    def _deny(self) -> dict | None:
+        """返回 None 表示放行；否则返回要回给前端的 401 载荷。"""
+        if self._token_ok():
+            return None
+        if not auth.is_initialized():
+            return {"error": "后台还没有设置账号密码", "need_setup": True}
+        if self.session_user():
+            return None
+        return {"error": "请先登录", "need_login": True}
 
     def _dispatch(self, method: str):
         parsed = urllib.parse.urlparse(self.path)
         self.path_only = urllib.parse.unquote(parsed.path)
         self.query = urllib.parse.parse_qs(parsed.query)
+        self._pending_cookie = ""
 
         for route_method, pattern, name in ROUTES:
             m = pattern.match(self.path_only)
@@ -420,21 +533,26 @@ class Handler(BaseHTTPRequestHandler):
             if route_method != method:
                 continue
             self.params = m.groupdict()
-            if not self._authorized():
-                return self._json(401, {"error": "需要口令", "token_required": True})
+            if name not in PUBLIC_ROUTES:
+                denied = self._deny()
+                if denied:
+                    return self._json(401, denied)
             try:
                 result = globals()[name](self)
             except HttpError as exc:
-                return self._json(exc.status, {"error": exc.message})
+                return self._json(exc.status, {"error": exc.message}, self._cookie_header())
             except ValueError as exc:
                 return self._json(400, {"error": str(exc)})
             except Exception as exc:  # noqa: BLE001
                 return self._json(500, {"error": f"{type(exc).__name__}: {exc}"})
-            return self._json(200, result)
+            return self._json(200, result, self._cookie_header())
 
         if method == "GET":
             return self._static(self.path_only)
         return self._json(404, {"error": f"未知接口 {method} {self.path_only}"})
+
+    def _cookie_header(self) -> dict | None:
+        return {"Set-Cookie": self._pending_cookie} if self._pending_cookie else None
 
     def do_GET(self):  # noqa: N802
         self._dispatch("GET")
@@ -471,13 +589,21 @@ class Handler(BaseHTTPRequestHandler):
 def serve() -> None:
     paths.ensure_dirs()
     runner.bootstrap()
+    note = auth.bootstrap_from_env()
     httpd = ThreadingHTTPServer((paths.HOST, paths.PORT), Handler)
     httpd.daemon_threads = True
     shown = "127.0.0.1" if paths.HOST == "0.0.0.0" else paths.HOST
     print(f"签到管理面板已启动：http://{shown}:{paths.PORT}", flush=True)
     print(f"  工作目录   : {paths.HOME}")
     print(f"  配置文件   : {paths.CONFIG_PATH}")
-    print(f"  口令保护   : {'已开启' if paths.TOKEN else '未开启（仅建议内网使用）'}", flush=True)
+    if note:
+        print(f"  后台账号   : {note}")
+    if not auth.is_initialized():
+        print("  后台账号   : 还没设置 —— 打开网页会引导你设置账号密码", flush=True)
+    else:
+        print(f"  后台账号   : {auth.username()}（凭据文件 {paths.AUTH_PATH}）")
+    if paths.TOKEN:
+        print("  脚本口令   : 已启用 PANEL_TOKEN（供脚本/自动化调用，不能替代登录）")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

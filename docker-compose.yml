@@ -1,24 +1,22 @@
 services:
   dailycheckin:
-    build: .
-    image: dailycheckin-compose:latest
+    image: ghcr.io/beacherz/dailycheckin-compose:latest
     container_name: dailycheckin
     restart: unless-stopped
-    environment:
-      TZ: ${TZ:-Asia/Shanghai}
-      # 容器内面板端口，一般不用改；要换端口改 .env 里的 WEB_PORT
-      PANEL_PORT: 8080
-      # 留空 = 不校验口令（内网用）。一旦映射到公网请务必设置
-      PANEL_TOKEN: ${PANEL_TOKEN:-}
-      PANEL_TITLE: ${PANEL_TITLE:-签到管理面板}
     ports:
-      # 左边是宿主机端口，按需修改；访问 http://NAS地址:端口
-      - "${WEB_PORT:-8080}:8080"
+      - 8080:8080
     volumes:
-      - ./config:/dailycheckin/config   # 签到配置（含 cookie），就是引擎原生的 config.json
-      - ./cron:/dailycheckin/cron       # 定时任务
-      - ./logs:/dailycheckin/logs       # 签到日志
-      - ./data:/dailycheckin/data       # 面板状态、配置备份、任务记录
+      - ./config:/dailycheckin/config
+      - ./logs:/dailycheckin/logs
+      - ./data:/dailycheckin/data
+      - ./cron:/dailycheckin/cron
+    environment:
+      - TZ=Asia/Shanghai
+      # - PANEL_PORT=8080                 # 容器内监听端口，改这里要同步改上面的映射
+      # - PANEL_TITLE=签到管理面板
+      # - PANEL_USERNAME=admin            # 想跳过「首次打开手动设置」，就用这两个直接建号
+      # - PANEL_PASSWORD=改成你自己的密码
+      # - PANEL_TOKEN=                    # 可选脚本口令，给 curl / 自动化用，不能替代登录
     healthcheck:
       test: ["CMD", "python", "-c", "import os,urllib.request;urllib.request.urlopen('http://127.0.0.1:'+os.environ.get('PANEL_PORT','8080')+'/api/health',timeout=5)"]
       interval: 30s

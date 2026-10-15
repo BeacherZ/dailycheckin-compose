@@ -27,11 +27,12 @@ STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 
 STATUS_PATH = os.path.join(DATA_DIR, "panel_status.json")
 RUNS_PATH = os.path.join(DATA_DIR, "panel_runs.json")
+AUTH_PATH = os.path.join(DATA_DIR, "panel_auth.json")
 BACKUP_DIR = os.path.join(DATA_DIR, "backups")
 
 HOST = _env("PANEL_HOST", "0.0.0.0")
 PORT = int(_env("PANEL_PORT", "8080"))
-# 留空表示不校验（默认，适合内网）。填了之后所有 /api 请求都要带这个口令
+# 可选：给脚本 / 自动化用的静态口令。留空就只走「账号密码登录」，这是默认。
 TOKEN = _env("PANEL_TOKEN", "")
 TITLE = _env("PANEL_TITLE", "签到管理面板")
 TZ = _env("TZ", "Asia/Shanghai")

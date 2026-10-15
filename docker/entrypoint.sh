@@ -15,7 +15,8 @@ echo " dailycheckin-compose"
 echo "  工作目录 : $DC_HOME"
 echo "  面板端口 : ${PANEL_PORT:-8080}"
 echo "  时区     : ${TZ:-Asia/Shanghai}"
-echo "  口令保护 : $([ -n "$PANEL_TOKEN" ] && echo 已开启 || echo 未开启)"
+echo "  后台账号 : $(python -c 'from panel import auth; print(auth.username() if auth.is_initialized() else "还没设置，首次打开网页会引导设置")' 2>/dev/null || echo "读取失败")"
+echo "  脚本口令 : $([ -n "$PANEL_TOKEN" ] && echo 已开启 || echo 未开启)"
 echo "======================================================"
 
 # 1) 首次启动自动生成空配置与默认定时任务（已存在就一个字符都不动）

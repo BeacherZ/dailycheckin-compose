@@ -3,46 +3,98 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
 <title>签到管理面板</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232f6feb'/%3E%3Cpath d='M9 17l5 5 9-11' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 
+<!-- ==================== 登录 / 首次设置 ==================== -->
+<div class="gate" id="gate">
+  <div class="gate-card">
+    <div class="gate-logo" aria-hidden="true">
+      <svg viewBox="0 0 32 32" width="34" height="34"><rect width="32" height="32" rx="9" fill="currentColor"/><path d="M9 17l5 5 9-11" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <h1 id="gateTitle">设置后台账号</h1>
+    <p class="gate-sub" id="gateSub">第一次使用，先给这个管理后台设置一个账号和密码。</p>
+
+    <form id="gateForm" autocomplete="off">
+      <label class="fld"><span>账号</span>
+        <input type="text" id="gateUser" autocomplete="username" spellcheck="false" placeholder="例如 admin">
+      </label>
+      <label class="fld"><span>密码</span>
+        <input type="password" id="gatePass" autocomplete="new-password" placeholder="至少 6 位">
+      </label>
+      <label class="fld" id="gatePass2Wrap"><span>确认密码</span>
+        <input type="password" id="gatePass2" autocomplete="new-password" placeholder="再输一遍">
+      </label>
+      <p class="gate-err" id="gateErr"></p>
+      <button type="submit" class="primary block" id="gateSubmit">创建并进入</button>
+    </form>
+    <p class="gate-tip" id="gateTip"></p>
+  </div>
+</div>
+
+<!-- ==================== 主界面 ==================== -->
+<div id="app" class="hidden">
+
 <header>
   <div class="brand">
-    <span class="dot" id="engineDot"></span>
-    <span id="panelTitle">签到管理面板</span>
-    <span class="ver" id="panelVersion"></span>
+    <span class="mark" aria-hidden="true">
+      <svg viewBox="0 0 32 32" width="26" height="26"><rect width="32" height="32" rx="9" fill="currentColor"/><path d="M9 17l5 5 9-11" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </span>
+    <span class="brand-text">
+      <b id="panelTitle">签到管理面板</b>
+      <span class="sub"><span class="dot" id="engineDot"></span><span id="engineText">引擎探测中</span><span class="sep">·</span>v<span id="panelVersion"></span></span>
+    </span>
   </div>
-  <div class="stats">
-    <span class="s-ok">有效 <b id="statValid">0</b></span>
-    <span class="s-bad">失效 <b id="statInvalid">0</b></span>
-    <span class="s-warn">未判定 <b id="statUnknown">0</b></span>
-    <span>已配置 <b id="statConfigured">0</b>/<b id="statTotal">0</b></span>
-    <span class="muted" id="statLastRun"></span>
+
+  <div class="stats" id="stats">
+    <span class="pill ok"><i></i>有效 <b id="statValid">0</b></span>
+    <span class="pill bad"><i></i>失效 <b id="statInvalid">0</b></span>
+    <span class="pill warn"><i></i>未判定 <b id="statUnknown">0</b></span>
+    <span class="pill"><i></i>已配置 <b id="statConfigured">0</b><em>/<span id="statTotal">0</span></em></span>
+    <span class="pill ghost" id="statLastRun">还没有运行过</span>
   </div>
+
   <div class="actions">
     <button class="primary" id="btnRunAll">全部签到</button>
     <button id="btnVerifyAll">校验全部</button>
-    <button id="btnDrawer">运行 / 日志</button>
-    <button id="btnSettings">设置</button>
+    <button class="icon-btn" id="btnDrawer" title="运行 / 日志">运行日志</button>
+    <button class="icon-btn" id="btnSettings" title="设置">设置</button>
   </div>
 </header>
 
 <div class="toolbar">
-  <input type="search" id="search" placeholder="搜索站点名或 KEY">
+  <div class="search-wrap">
+    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="4.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10.4 10.4L14 14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+    <input type="search" id="search" placeholder="搜索站点名或 KEY（按 / 聚焦）" spellcheck="false">
+  </div>
+
+  <div class="seg" id="viewSeg" role="group" aria-label="视图">
+    <button data-view="card" class="active">卡片</button>
+    <button data-view="list">列表</button>
+  </div>
+
+  <select id="groupFilter" title="按分类筛选"></select>
+
   <select id="filter">
-    <option value="all">全部站点</option>
+    <option value="all">全部状态</option>
     <option value="configured">已配置</option>
     <option value="unconfigured">未配置</option>
     <option value="valid">cookie 有效</option>
     <option value="invalid">cookie 失效</option>
     <option value="unverified">未校验</option>
   </select>
-  <label class="switch"><input type="checkbox" id="maskCookie" checked> 隐藏 cookie 内容</label>
+
+  <button class="chip-btn" id="btnOnlyTodo" title="只看还没配置 cookie 的站点">只看待配置</button>
+
   <span class="spacer"></span>
-  <button class="ghost tiny" id="btnExpandAll">全部展开</button>
-  <button class="ghost tiny" id="btnCollapseAll">全部收起</button>
+
+  <label class="switch"><input type="checkbox" id="maskCookie" checked> 隐藏 cookie</label>
+  <button class="ghost tiny" id="btnExpandAll">展开全部</button>
+  <button class="ghost tiny" id="btnCollapseAll">收起全部</button>
   <button class="ghost tiny" id="btnRefresh">刷新</button>
 </div>
 
@@ -50,6 +102,8 @@
   <div id="sites" class="grid"></div>
   <div id="emptyHint" class="empty hidden"></div>
 </main>
+
+</div>
 
 <div class="overlay" id="overlay"></div>
 
@@ -66,7 +120,7 @@
     <button data-tab="log">签到日志</button>
   </div>
   <div class="drawer-body">
-    <div data-panel="live"><pre class="console" id="console">（还没有运行记录，点「全部签到」或卡片里的「立即签到」）</pre></div>
+    <div data-panel="live"><pre class="console" id="console">（还没有运行记录。点右上角「全部签到」，或卡片里的「立即签到」）</pre></div>
     <div data-panel="history" class="hidden"><div id="history"></div></div>
     <div data-panel="log" class="hidden">
       <div class="row" style="margin:0 0 8px">
@@ -83,6 +137,22 @@
   <div class="dlg-body">
 
     <div class="section">
+      <h4>后台账号 <span class="muted">（登录这个面板用的账号密码）</span></h4>
+      <div class="kv">
+        <div><label>账号 <span class="opt">当前：<b id="accCurrent"></b></span></label><input type="text" id="accUser" autocomplete="off"></div>
+        <div><label>当前密码 <span class="req">修改时必须填</span></label><input type="password" id="accOld" autocomplete="off"></div>
+        <div><label>新密码 <span class="opt">留空则不改</span></label><input type="password" id="accNew" autocomplete="new-password"></div>
+        <div><label>确认新密码</label><input type="password" id="accNew2" autocomplete="new-password"></div>
+      </div>
+      <div class="row">
+        <button class="primary" id="btnSaveAccount">保存账号设置</button>
+        <button id="btnLogout">退出登录</button>
+        <span class="spacer"></span>
+        <span class="muted" style="font-size:12px" id="accTip"></span>
+      </div>
+    </div>
+
+    <div class="section">
       <h4>定时签到</h4>
       <div class="row" style="margin:0">
         <label class="switch"><input type="checkbox" id="schEnabled"> 启用定时任务</label>
@@ -96,9 +166,17 @@
     </div>
 
     <div class="section">
-      <h4>推送通知 <span class="muted">（可选，填了就推送签到结果）</span></h4>
+      <h4>推送通知 <span class="muted">（可选。填了就把签到结果推给你）</span></h4>
+      <div class="row" style="margin:0 0 10px">
+        <label style="font-size:12px;color:var(--fg-2)">消息条数</label>
+        <select id="mergePush" style="width:auto">
+          <option value="">合并成一条（推荐，站点之间用分隔行隔开）</option>
+          <option value="false">每个站点单独一条</option>
+        </select>
+      </div>
       <div class="kv" id="noticeFields"></div>
       <div class="row"><button class="primary" id="btnSaveNotice">保存推送设置</button></div>
+      <p class="tip">Telegram / 钉钉 / 飞书 / Server 酱 等只填自己要用的那几项即可，其它留空。</p>
     </div>
 
     <div class="section">

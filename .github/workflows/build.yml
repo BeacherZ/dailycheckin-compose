@@ -1,14 +1,21 @@
-name: build & smoke test
+name: build & publish
 
+# 推 main → 冒烟测试 + 发布镜像到 ghcr.io
+# 提 PR   → 只跑冒烟测试，不发布
+# 打 tag  → 冒烟测试 + 发布带版本号的镜像
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
     branches: [main]
   workflow_dispatch:
 
 jobs:
-  docker:
+  # ------------------------------------------------------------------ #
+  # 1) 构建镜像、起容器、把所有接口真跑一遍
+  # ------------------------------------------------------------------ #
+  smoke:
     name: 构建镜像并冒烟测试
     runs-on: ubuntu-latest
     steps:
@@ -23,6 +30,8 @@ jobs:
           load: true
           push: false
           tags: dailycheckin-compose:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: 启动容器并等待面板就绪
         run: |
@@ -60,7 +69,63 @@ jobs:
           curl -fsS -H "X-Panel-Token: ci-secret" http://127.0.0.1:18080/api/state -o state.json
           curl -fsS http://127.0.0.1:18080/ | grep -q "签到管理面板"
           curl -fsS http://127.0.0.1:18080/static/app.js > /dev/null
-          python3 -c "import json,sys;st=json.load(open('state.json',encoding='utf-8'));assert st['panel']['token_required'] is True;assert st['engine']['ok'] is True, st['engine'];assert len(st['sites'])>=16, len(st['sites']);print('引擎版本',st['engine']['version'],'| 站点数',len(st['sites']))"
+          curl -fsS http://127.0.0.1:18080/api/auth/status -o auth-status.json
+          python3 -c "import json;st=json.load(open('state.json',encoding='utf-8'));assert st['panel']['token_bypass'] is True,st['panel'];assert st['engine']['ok'] is True,st['engine'];assert len(st['sites'])>=16,len(st['sites']);print('引擎版本',st['engine']['version'],'| 站点数',len(st['sites']))"
+          python3 -c "import json;a=json.load(open('auth-status.json',encoding='utf-8'));assert a['initialized'] is False,a;print('账号初始状态：未设置')"
+
+      - name: 后台账号密码（首次设置 → 登录 → 登出 → 改密码）
+        run: |
+          set -e
+          B=http://127.0.0.1:18080
+
+          # 未设置账号时，无凭证的受保护接口要 401 + need_setup
+          # 注意：这里不能用 -f，否则 401 的响应体不会被写下来
+          curl -s $B/api/state -o needsetup.json
+          python3 -c "import json;d=json.load(open('needsetup.json'));assert d.get('need_setup') is True,d;print('未设置账号时的提示 OK')"
+
+          # 校验规则：密码过短要拒绝
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H "Content-Type: application/json" \
+            -d '{"username":"admin","password":"123"}' $B/api/auth/setup)
+          test "$code" = "400" || { echo "短密码应 400，实际 $code"; exit 1; }
+
+          # 首次设置：成功后下发会话 cookie
+          curl -fsS -c cookies.txt -H "Content-Type: application/json" \
+            -d '{"username":"admin","password":"ci-pass-123"}' $B/api/auth/setup -o setup.json
+          python3 -c "import json;d=json.load(open('setup.json'));assert d['ok'] is True,d;print('首次设置 OK')"
+          grep -q dc_session cookies.txt || { echo "未下发会话 cookie"; exit 1; }
+
+          # 只带会话 cookie（不带 token）也要能访问
+          curl -fsS -b cookies.txt $B/api/state -o sess.json
+          python3 -c "import json;d=json.load(open('sess.json'));assert d['panel']['user']=='admin',d['panel'];print('会话可访问受保护接口 OK')"
+
+          # 重复设置要被拒绝
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H "Content-Type: application/json" \
+            -d '{"username":"hacker","password":"ci-pass-123"}' $B/api/auth/setup)
+          test "$code" = "400" || { echo "重复设置应 400，实际 $code"; exit 1; }
+
+          # 登出后必须重新登录
+          curl -fsS -b cookies.txt -c cookies.txt -X POST $B/api/auth/logout -o /dev/null
+          curl -s $B/api/state -o after.json
+          python3 -c "import json;d=json.load(open('after.json'));assert d.get('need_login') is True,d;print('登出后拦截 OK')"
+
+          # 错误密码 401，正确密码 200
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H "Content-Type: application/json" \
+            -d '{"username":"admin","password":"nope"}' $B/api/auth/login)
+          test "$code" = "401" || { echo "错误密码应 401，实际 $code"; exit 1; }
+          curl -fsS -c cookies.txt -H "Content-Type: application/json" \
+            -d '{"username":"admin","password":"ci-pass-123"}' $B/api/auth/login -o /dev/null
+
+          # 改密码：旧密码失效、新密码可用
+          curl -fsS -b cookies.txt -c cookies.txt -H "Content-Type: application/json" \
+            -d '{"old_password":"ci-pass-123","new_password":"ci-pass-456"}' $B/api/auth/credentials -o cred.json
+          python3 -c "import json;d=json.load(open('cred.json'));assert d['password_changed'] is True,d;print('改密码 OK')"
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H "Content-Type: application/json" \
+            -d '{"username":"admin","password":"ci-pass-123"}' $B/api/auth/login)
+          test "$code" = "401" || { echo "旧密码应失效，实际 $code"; exit 1; }
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H "Content-Type: application/json" \
+            -d '{"username":"admin","password":"ci-pass-456"}' $B/api/auth/login)
+          test "$code" = "200" || { echo "新密码应可登录，实际 $code"; exit 1; }
+          echo "认证流程全部通过"
 
       - name: cookie 规范化接口
         run: |
@@ -117,3 +182,46 @@ jobs:
         run: |
           docker logs dc-ci --tail 200
           docker ps -a
+
+  # ------------------------------------------------------------------ #
+  # 2) 冒烟测试通过后，把镜像发布到 ghcr.io
+  # ------------------------------------------------------------------ #
+  publish:
+    name: 发布镜像到 GHCR
+    needs: smoke
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: 登录 GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 计算镜像标签
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=tag
+            type=sha,format=short
+
+      - name: 构建并推送
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
