@@ -213,9 +213,14 @@ def h_save_accounts(h):
         if any(str(v or "").strip() for k, v in account.items() if not str(k).startswith("_")):
             cleaned.append({k: v for k, v in account.items() if not str(k).startswith("_")})
     data = store.load()
+    before = store.accounts(data, key)
     store.set_accounts(data, key, cleaned)
     store.write(data)
-    return {"ok": True, "count": len(cleaned)}
+    # 账号被改动 → 旧的有效性标记立刻作废，避免「改了 cookie 还显示失效」的困惑
+    changed = before != cleaned
+    if changed:
+        runner.clear_site_status(key)
+    return {"ok": True, "count": len(cleaned), "changed": changed}
 
 
 @route("POST", r"/api/notice")
