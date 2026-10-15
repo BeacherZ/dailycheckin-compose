@@ -448,7 +448,17 @@
         if (run.status === "running") return pollRun();
         S.runId = null;
         await loadState(true);
-        toast(run.status === "done" ? "任务完成" : "任务结束但有问题，请看输出");
+        if (run.kind === "verify") {
+          toast(run.status === "done" ? "批量校验完成" : "校验结束但有问题，请看输出");
+        } else {
+          // 关键提醒：签到任务跑通 ≠ cookie 有效（部分站点模块对无效 cookie 是静默返回的）
+          toast(
+            run.status === "done"
+              ? "签到任务完成 —— 有效性请以「校验 cookie」的结论为准"
+              : "签到任务结束但有问题，请看输出",
+            4200
+          );
+        }
       } catch (e) {
         $("console").textContent += "\n[面板] 读取任务状态失败：" + e.message;
       }
