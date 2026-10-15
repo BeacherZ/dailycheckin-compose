@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>签到管理面板</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <span class="dot" id="engineDot"></span>
+    <span id="panelTitle">签到管理面板</span>
+    <span class="ver" id="panelVersion"></span>
+  </div>
+  <div class="stats">
+    <span class="s-ok">有效 <b id="statValid">0</b></span>
+    <span class="s-bad">失效 <b id="statInvalid">0</b></span>
+    <span class="s-warn">未判定 <b id="statUnknown">0</b></span>
+    <span>已配置 <b id="statConfigured">0</b>/<b id="statTotal">0</b></span>
+    <span class="muted" id="statLastRun"></span>
+  </div>
+  <div class="actions">
+    <button class="primary" id="btnRunAll">全部签到</button>
+    <button id="btnVerifyAll">校验全部</button>
+    <button id="btnDrawer">运行 / 日志</button>
+    <button id="btnSettings">设置</button>
+  </div>
+</header>
+
+<div class="toolbar">
+  <input type="search" id="search" placeholder="搜索站点名或 KEY">
+  <select id="filter">
+    <option value="all">全部站点</option>
+    <option value="configured">已配置</option>
+    <option value="unconfigured">未配置</option>
+    <option value="valid">cookie 有效</option>
+    <option value="invalid">cookie 失效</option>
+    <option value="unverified">未校验</option>
+  </select>
+  <label class="switch"><input type="checkbox" id="maskCookie" checked> 隐藏 cookie 内容</label>
+  <span class="spacer"></span>
+  <button class="ghost tiny" id="btnExpandAll">全部展开</button>
+  <button class="ghost tiny" id="btnCollapseAll">全部收起</button>
+  <button class="ghost tiny" id="btnRefresh">刷新</button>
+</div>
+
+<main>
+  <div id="sites" class="grid"></div>
+  <div id="emptyHint" class="empty hidden"></div>
+</main>
+
+<div class="overlay" id="overlay"></div>
+
+<aside class="drawer" id="drawer" aria-label="运行与日志">
+  <div class="drawer-head">
+    <h3 id="drawerTitle">运行输出</h3>
+    <span class="spacer"></span>
+    <button class="ghost tiny" id="btnClearConsole">清屏</button>
+    <button class="ghost tiny" id="btnDrawerClose">关闭</button>
+  </div>
+  <div class="tabs">
+    <button class="active" data-tab="live">当前任务</button>
+    <button data-tab="history">历史任务</button>
+    <button data-tab="log">签到日志</button>
+  </div>
+  <div class="drawer-body">
+    <div data-panel="live"><pre class="console" id="console">（还没有运行记录，点「全部签到」或卡片里的「立即签到」）</pre></div>
+    <div data-panel="history" class="hidden"><div id="history"></div></div>
+    <div data-panel="log" class="hidden">
+      <div class="row" style="margin:0 0 8px">
+        <select id="logFile" style="max-width:240px"></select>
+        <button class="tiny" id="btnReloadLog">重新读取</button>
+      </div>
+      <pre class="console" id="logText">（暂无日志）</pre>
+    </div>
+  </div>
+</aside>
+
+<dialog id="settings">
+  <div class="dlg-head"><h3>设置</h3><span class="spacer"></span><button class="ghost tiny" id="btnCloseSettings">关闭</button></div>
+  <div class="dlg-body">
+
+    <div class="section">
+      <h4>定时签到</h4>
+      <div class="row" style="margin:0">
+        <label class="switch"><input type="checkbox" id="schEnabled"> 启用定时任务</label>
+        <select id="schPreset" style="width:auto"></select>
+      </div>
+      <div class="row">
+        <input type="text" id="schCron" placeholder="分 时 日 月 周，例如 0 9 * * *" style="font-family:var(--mono)">
+        <button class="primary" id="btnSaveSchedule">保存并生效</button>
+      </div>
+      <p class="tip" id="schTip"></p>
+    </div>
+
+    <div class="section">
+      <h4>推送通知 <span class="muted">（可选，填了就推送签到结果）</span></h4>
+      <div class="kv" id="noticeFields"></div>
+      <div class="row"><button class="primary" id="btnSaveNotice">保存推送设置</button></div>
+    </div>
+
+    <div class="section">
+      <h4>config.json <span class="muted">（高级：直接编辑引擎配置文件）</span></h4>
+      <p class="tip" id="configTip"></p>
+      <textarea id="configRaw" rows="12" spellcheck="false"></textarea>
+      <div class="row">
+        <button class="primary" id="btnSaveRaw">保存 config.json</button>
+        <button id="btnReloadRaw">重新载入</button>
+        <span class="spacer"></span>
+        <select id="backupSelect" style="width:auto"></select>
+        <button id="btnRestore">恢复该备份</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h4>运行环境</h4>
+      <pre class="console" id="envInfo" style="min-height:auto"></pre>
+    </div>
+
+  </div>
+  <div class="dlg-foot"><button id="btnCloseSettings2">关闭</button></div>
+</dialog>
+
+<div class="toast" id="toast"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>
