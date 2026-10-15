@@ -1,0 +1,21 @@
+# 运行时数据（挂载卷）——里面会有你的 cookie，绝对不要提交
+config/
+cron/
+logs/
+data/
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# 编辑器 / 系统
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
