@@ -208,7 +208,6 @@
 <div class="account" data-index="${index}">
   <div class="acc-head">
     <b>账号 ${index + 1}</b>
-    ${account.length ? "" : ""}
     <span class="spacer"></span>
     <button class="ghost tiny" data-action="remove" data-key="${site.key}" data-index="${index}">删除</button>
   </div>
@@ -237,7 +236,7 @@
     const parts = [];
     if (check.missing && check.missing.length) parts.push(`缺少必填字段：${check.missing.join("、")}`);
     else if (check.ok) parts.push(`格式正常，共 ${check.count} 个字段`);
-    else if (check.message) parts.push(esc(check.message));
+    else if (check.message) parts.push(check.message);
     if (check.source && check.source !== "unknown") parts.push(`识别为 ${check.source}`);
     let html = esc(parts.join("｜"));
     if (check.keys && check.keys.length) {
@@ -259,18 +258,6 @@
   function draftOf(key) {
     if (!S.drafts[key]) S.drafts[key] = [];
     return S.drafts[key];
-  }
-
-  function syncChecks(key) {
-    const site = findSite(key);
-    const accounts = draftOf(key);
-    S.checks[key] = accounts.map((_, i) => (S.checks[key] || [])[i] || null);
-    // 立即用本地规则重算一次（字段是否缺失无需联网）
-    accounts.forEach((acc, i) => {
-      const missing = (site.required || []).filter((k) => !(acc.cookie || "").toLowerCase().includes(k.toLowerCase() + "="));
-      const base = S.checks[key][i] || { ok: null, message: "", warnings: [] };
-      S.checks[key][i] = { ...base, missing, ok: acc.cookie ? missing.length === 0 && (base.ok !== false) : null };
-    });
   }
 
   function repaintCard(key) {
