@@ -1,0 +1,101 @@
+name: build & smoke test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  docker:
+    name: 构建镜像并冒烟测试
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: 构建镜像（Dockerfile 内含引擎自检，装不上会直接失败）
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          push: false
+          tags: dailycheckin-compose:ci
+
+      - name: 启动容器并等待面板就绪
+        run: |
+          mkdir -p config cron logs data
+          docker run -d --name dc-ci -p 18080:8080 \
+            -e PANEL_PORT=8080 -e PANEL_TOKEN=ci-secret \
+            -v "$PWD/config:/dailycheckin/config" \
+            -v "$PWD/cron:/dailycheckin/cron" \
+            -v "$PWD/logs:/dailycheckin/logs" \
+            -v "$PWD/data:/dailycheckin/data" \
+            dailycheckin-compose:ci
+          for i in $(seq 1 40); do
+            if curl -fsS -H "X-Panel-Token: ci-secret" http://127.0.0.1:18080/api/health >/dev/null; then
+              echo "面板已就绪（第 $i 次探测）"; break
+            fi
+            sleep 2
+          done
+
+      - name: 首次启动是否自动生成了配置与定时任务
+        run: |
+          set -e
+          test -s config/config.json || { echo "config.json 未生成"; exit 1; }
+          test -s cron/crontab_list.sh || { echo "crontab_list.sh 未生成"; exit 1; }
+          echo "--- 生成的 config.json 前几行"
+          head -5 config/config.json
+          echo "--- crontab 内容"
+          docker exec dc-ci crontab -l | tee /tmp/cron.txt
+          grep -q "dailycheckin-compose managed" /tmp/cron.txt
+
+      - name: 健康检查与口令保护
+        run: |
+          set -e
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/api/state)
+          test "$code" = "401" || { echo "无口令应返回 401，实际 $code"; exit 1; }
+          curl -fsS -H "X-Panel-Token: ci-secret" http://127.0.0.1:18080/api/state -o state.json
+          curl -fsS http://127.0.0.1:18080/ | grep -q "签到管理面板"
+          curl -fsS http://127.0.0.1:18080/static/app.js > /dev/null
+          python3 -c "import json,sys;st=json.load(open('state.json',encoding='utf-8'));assert st['panel']['token_required'] is True;assert st['engine']['ok'] is True, st['engine'];assert len(st['sites'])>=16, len(st['sites']);print('引擎版本',st['engine']['version'],'| 站点数',len(st['sites']))"
+
+      - name: cookie 规范化接口
+        run: |
+          curl -fsS -H "X-Panel-Token: ci-secret" -H "Content-Type: application/json" \
+            -d '{"raw":"SESSDATA=abc;bili_jct=def","site":"BILIBILI"}' \
+            http://127.0.0.1:18080/api/cookies/normalize -o norm.json
+          python3 -c "import json;r=json.load(open('norm.json',encoding='utf-8'));assert r['ok'] is True,r;assert r['cookie']=='SESSDATA=abc; bili_jct=def;',r['cookie'];assert r['count']==2,r;print('规范化结果:',r['cookie'])"
+
+      - name: 引擎加载与 B 站接口修复
+        run: |
+          set -e
+          docker exec dc-ci python -c "import dailycheckin, dailycheckin.configs as c; assert len(c.checkin_map) >= 16; print('站点模块:', len(c.checkin_map))"
+          docker exec dc-ci sh -c "grep -c 'web-interface/newlist' \$(python -c 'import dailycheckin.bilibili.main as m; print(m.__file__)')"
+          docker exec dc-ci dailycheckin --include BILIBILI
+
+      - name: 跑一次真实签到流程（接入一个假 cookie）
+        run: |
+          set -e
+          python3 -c "import json;json.dump({'BILIBILI':[{'cookie':'SESSDATA=fake; bili_jct=fake; DedeUserID=1','coin_num':0}]},open('config/config.json','w'),ensure_ascii=False)"
+          curl -fsS -H "X-Panel-Token: ci-secret" -H "Content-Type: application/json" \
+            -d '{"sites":["BILIBILI"]}' http://127.0.0.1:18080/api/run -o run.json
+          RUN_ID=$(python3 -c "import json;print(json.load(open('run.json'))['id'])")
+          for i in $(seq 1 60); do
+            curl -fsS -H "X-Panel-Token: ci-secret" "http://127.0.0.1:18080/api/runs/$RUN_ID" -o detail.json
+            status=$(python3 -c "import json;print(json.load(open('detail.json'))['status'])")
+            [ "$status" != "running" ] && break
+            sleep 2
+          done
+          python3 -c "import json;d=json.load(open('detail.json',encoding='utf-8'));print('\n'.join(d['lines'][:25]));print('状态:',d['status']);assert d['status']!='running'"
+          echo "--- 面板回写的状态"
+          curl -fsS -H "X-Panel-Token: ci-secret" http://127.0.0.1:18080/api/state -o state2.json
+          python3 -c "import json;st=json.load(open('state2.json',encoding='utf-8'));s=[x for x in st['sites'] if x['key']=='BILIBILI'][0];print('BILIBILI ->',s['status']['state'],'|',s['status']['message']);assert s['status']['state'] in ('valid','invalid')"
+
+      - name: 失败时打印容器日志
+        if: failure()
+        run: |
+          docker logs dc-ci --tail 200
+          docker ps -a
