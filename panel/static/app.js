@@ -103,6 +103,8 @@
   };
 
   const STATE_TEXT = { valid: ["valid", "✅ 有效"], invalid: ["invalid", "❌ 失效"], unknown: ["unknown", "❔ 无法判定"], unverified: ["unverified", "⚪ 未校验"] };
+  // 标注结论是哪来的：登录态接口是强证据，签到运行只是弱证据
+  const SOURCE_TEXT = { api: "依据：登录态接口", run: "依据：签到运行" };
 
   /* ---------------- 渲染 ---------------- */
   function render() {
@@ -136,6 +138,8 @@
     const meta = [];
     meta.push(accounts.length ? `${accounts.length} 个账号` : "未配置");
     if (site.status && site.status.checked_at) meta.push(`校验于 ${ago(site.status.checked_at)}`);
+    const src = site.status && SOURCE_TEXT[site.status.source];
+    if (src) meta.push(src);
     if (site.status && site.status.message) meta.push(truncate(site.status.message, 60));
     if (S.dirty[site.key]) meta.push("● 有未保存的改动");
 
