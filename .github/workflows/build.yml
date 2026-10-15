@@ -79,7 +79,9 @@ jobs:
       - name: 跑一次真实签到流程（接入一个假 cookie）
         run: |
           set -e
-          python3 -c "import json;json.dump({'BILIBILI':[{'cookie':'SESSDATA=fake; bili_jct=fake; DedeUserID=1','coin_num':0}]},open('config/config.json','w'),ensure_ascii=False)"
+          # 注意：config 是 bind mount，容器内是 root 写的，宿主机用户改不动，
+          # 所以这个文件必须在容器里写。
+          docker exec dc-ci python -c "import json;json.dump({'BILIBILI':[{'cookie':'SESSDATA=fake; bili_jct=fake; DedeUserID=1','coin_num':0}]},open('/dailycheckin/config/config.json','w'),ensure_ascii=False)"
           curl -fsS -H "X-Panel-Token: ci-secret" -H "Content-Type: application/json" \
             -d '{"sites":["BILIBILI"]}' http://127.0.0.1:18080/api/run -o run.json
           RUN_ID=$(python3 -c "import json;print(json.load(open('run.json'))['id'])")
