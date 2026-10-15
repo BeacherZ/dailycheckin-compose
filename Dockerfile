@@ -19,6 +19,9 @@ RUN set -eux; \
     rm -rf /var/lib/apt/lists/*
 
 # ---------- 1) 安装签到引擎（含 B 站接口修复）----------
+# 构建期做一次自检：装不上、站点加载不出来就直接让构建失败，不要等运行时才发现。
+# 顺序上必须先把 cwd 切走再删 /build —— 删掉当前工作目录会让 Python 的
+# sys.path[0]（空串 = cwd）指向不存在的路径，pkgutil.extend_path 会直接抛 FileNotFoundError。
 WORKDIR /build
 COPY pyproject.toml setup.py requirements.txt ./
 COPY dailycheckin ./dailycheckin
@@ -26,11 +29,10 @@ RUN set -eux; \
     pip install --no-cache-dir --upgrade pip setuptools wheel; \
     pip install --no-cache-dir -r requirements.txt; \
     pip install --no-cache-dir --no-deps .; \
-    rm -rf /build; \
-    # 构建期自检：装不上、站点加载不出来就直接让构建失败，不要等到运行才发现
     python -c "import dailycheckin, dailycheckin.configs as c; print('引擎自检通过，已加载', len(c.checkin_map), '个站点模块')"; \
     grep -q 'web-interface/newlist' "$(python -c 'import dailycheckin.bilibili.main as m; print(m.__file__)')"; \
-    echo 'B 站接口修复已生效'
+    echo 'B 站接口修复已生效'; \
+    cd / && rm -rf /build
 
 # ---------- 2) 放入网页管理面板（纯标准库实现，不需要安装）----------
 WORKDIR ${DC_HOME}
