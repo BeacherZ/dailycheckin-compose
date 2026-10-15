@@ -187,7 +187,15 @@ docker compose up -d
 容器内的 cron 是关键，先看 `docker logs dailycheckin` 里有没有「定时任务已装载」。另外确认「设置 → 定时签到」是开着的。cron 不会继承容器环境变量，所以默认 crontab 头部显式写了 `TZ` 和 `PATH`。
 
 **Q：从官方镜像 `sitoi/dailycheckin` 迁过来要做什么？**
-把原 `config/config.json` 复制到本项目的 `config/` 目录，然后 `docker compose up -d`。格式一模一样，站点和账号都会自动识别出来。原来那套「pip 升级后手打补丁」的 cron 可以删掉了。
+先把旧容器停掉并删除 —— 本项目的容器名也叫 `dailycheckin`，不清理会撞名：
+
+```bash
+docker stop dailycheckin && docker rm dailycheckin
+# 或者原来是用 compose 起的，就进原目录 docker compose down
+```
+
+然后把原 `config/config.json` 复制到本项目的 `config/` 目录，`docker compose up -d` 即可。
+格式一模一样，站点和账号都会自动识别出来。原来那套「pip 升级后手打补丁」的 cron 也可以删掉了。
 
 **Q：为什么镜像里 `/dailycheckin` 下没有 `dailycheckin` 源码目录？**
 引擎是用 `pip install .` 装进 site-packages 的，面板自己不需要安装（纯标准库）。想改引擎代码，改仓库里的 `dailycheckin/` 再 `docker compose build` 即可。
@@ -220,7 +228,7 @@ pip install -r requirements.txt     # 只有引擎需要（requests / pycryptodo
 python -m panel                     # 默认监听 0.0.0.0:8080，工作目录取仓库根目录
 ```
 
-面板自身的自测脚本在本地跑一遍就能覆盖规范化、保存、校验、运行、定时等全部接口。
+一个好处是：即使 `requests` 还没装好、引擎导入失败，面板也能起来并给出提示（站点清单会退化成扫源码获取），不会白屏。
 
 ## 致谢与许可
 
