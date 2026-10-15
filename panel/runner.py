@@ -83,6 +83,25 @@ def site_status(key: str) -> dict:
     return _STATUS.get("sites", {}).get(key.upper(), {"state": "unverified", "source": None, "message": "", "accounts": []})
 
 
+def clear_site_status(key: str, message: str = "cookie 已更新，等待重新校验") -> None:
+    """账号被改动后把状态归零。
+
+    这一步很关键：否则会出现「改了 cookie → 状态还是旧的失效」这种困惑。
+    """
+    with _LOCK:
+        sites = _STATUS.setdefault("sites", {})
+        if key.upper() in sites:
+            sites[key.upper()] = {
+                "state": "unverified",
+                "source": None,
+                "message": message,
+                "user": None,
+                "checked_at": time.time(),
+                "accounts": [],
+            }
+            _save_status()
+
+
 def all_status() -> dict:
     return {"updated": _STATUS.get("updated", 0), "sites": _STATUS.get("sites", {})}
 
@@ -292,14 +311,26 @@ def parse_output(lines: list[str]) -> list[dict]:
 
 
 def _apply_results(results: list[dict]) -> None:
+    """把运行结果回写成站点状态。
+
+    这里有个坑：不少站点模块遇到无效 cookie 时是**静默返回**的
+    （比如 bilibili 的 `if is_login:` 不成立就直接跳过，一个异常都不抛），
+    引擎照样打 ✅。所以「跑一次没报错」只是弱证据，而登录态接口返回的
+    ❌ 是强证据 —— 两者冲突时以接口为准，并把冲突原因写清楚。
+    """
     for one in results:
         if one["ok"]:
-            mark_site(
-                one["key"],
-                "valid",
-                "run",
-                message=f"{one['ok_count']} 个账号签到成功",
-            )
+            prev = site_status(one["key"])
+            if prev.get("state") == "invalid" and prev.get("source") == "api":
+                mark_site(
+                    one["key"],
+                    "invalid",
+                    "api",
+                    message=(prev.get("message") or "登录态接口判定为失效").rstrip("。")
+                    + "。（签到任务本身没抛异常，但该站点模块对无效 cookie 是静默返回的，以接口判定为准）",
+                )
+            else:
+                mark_site(one["key"], "valid", "run", message=f"{one['ok_count']} 个账号签到成功")
         else:
             mark_site(
                 one["key"],
