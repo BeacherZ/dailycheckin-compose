@@ -94,7 +94,23 @@ jobs:
           python3 -c "import json;d=json.load(open('detail.json',encoding='utf-8'));print('\n'.join(d['lines'][:25]));print('状态:',d['status']);assert d['status']!='running'"
           echo "--- 面板回写的状态"
           curl -fsS -H "X-Panel-Token: ci-secret" http://127.0.0.1:18080/api/state -o state2.json
-          python3 -c "import json;st=json.load(open('state2.json',encoding='utf-8'));s=[x for x in st['sites'] if x['key']=='BILIBILI'][0];print('BILIBILI ->',s['status']['state'],'|',s['status']['message']);assert s['status']['state'] in ('valid','invalid')"
+          python3 -c "import json;st=json.load(open('state2.json',encoding='utf-8'));s=[x for x in st['sites'] if x['key']=='BILIBILI'][0];print('BILIBILI ->',s['status']['state'],'|',s['status']['message']);assert s['status']['state'] in ('valid','invalid');assert s['status']['source']=='run',s['status']"
+
+      - name: 改动 cookie 后旧的有效性标记必须作废
+        run: |
+          set -e
+          # 换成另一个 cookie，面板要把该站点状态重置为 unverified，否则用户会看到过期的 ❌/✅
+          curl -fsS -H "X-Panel-Token: ci-secret" -H "Content-Type: application/json" \
+            -d '{"accounts":[{"cookie":"SESSDATA=fake2; bili_jct=fake2; DedeUserID=2","coin_num":0}]}' \
+            http://127.0.0.1:18080/api/sites/BILIBILI/accounts -o save.json
+          python3 -c "import json;r=json.load(open('save.json',encoding='utf-8'));print('保存返回:',r);assert r['ok'] is True and r['changed'] is True,r"
+          curl -fsS -H "X-Panel-Token: ci-secret" http://127.0.0.1:18080/api/state -o state3.json
+          python3 -c "import json;st=json.load(open('state3.json',encoding='utf-8'));s=[x for x in st['sites'] if x['key']=='BILIBILI'][0];print('BILIBILI ->',s['status']);assert s['status']['state']=='unverified',s['status'];assert not s['status']['source'],s['status']"
+          # 再存一次同样的内容，changed 应为 false（不该无谓地清空状态）
+          curl -fsS -H "X-Panel-Token: ci-secret" -H "Content-Type: application/json" \
+            -d '{"accounts":[{"cookie":"SESSDATA=fake2; bili_jct=fake2; DedeUserID=2","coin_num":0}]}' \
+            http://127.0.0.1:18080/api/sites/BILIBILI/accounts -o save2.json
+          python3 -c "import json;r=json.load(open('save2.json',encoding='utf-8'));print('重复保存返回:',r);assert r['changed'] is False,r"
 
       - name: 失败时打印容器日志
         if: failure()
