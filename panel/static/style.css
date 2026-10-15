@@ -193,7 +193,10 @@ main { padding: 8px 20px 80px; }
 .check.warn { color: var(--warn); }
 .check ul { margin: 4px 0 0; padding-left: 18px; }
 
-.masked textarea { -webkit-text-security: disc; letter-spacing: .1em; }
+/* 隐藏 cookie 内容：用「文字透明 + 阴影」的方式，比 -webkit-text-security 兼容性好，
+   聚焦时会自动显示出来，方便核对。 */
+.masked textarea { color: transparent; text-shadow: 0 0 9px rgba(128, 136, 145, .9); caret-color: var(--fg); }
+.masked textarea:focus { color: var(--fg); text-shadow: none; }
 .hidden { display: none !important; }
 .muted { color: var(--fg-3); }
 
