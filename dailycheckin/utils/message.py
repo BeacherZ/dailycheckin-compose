@@ -15,7 +15,7 @@ PROJECT_URL = "https://github.com/beacherz/dailycheckin-plus"
 
 # 各站点签到结果之间的分隔行。用全角破折号：所有推送渠道都能正常显示，
 # 不会被当成 markdown 语法，也不会像方块字符那样在不同字体下变成乱码。
-SEPARATOR = "\n" + "—" * 22 + "\n"
+SEPARATOR = "\n" + "—" * 12 + "\n"
 
 # 渠道自带标题能力（server 酱 / PushPlus / Gotify / ntfy / 企业微信）时的兜底标题。
 # 正常情况下由 main.py 传进来一个带日期的标题；标题里始终带上项目名。
