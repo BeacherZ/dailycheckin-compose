@@ -188,11 +188,11 @@ jobs:
           curl -fsS -H "X-Panel-Token: ci-secret" http://127.0.0.1:18080/api/state -o state-notice.json
           python3 -c "import json;st=json.load(open('state-notice.json',encoding='utf-8'));g=st['notice_groups'];k=[f['key'] for x in g for f in x['fields']];assert len(g)==11,len(g);assert k==[i['key'] for i in st['notice_keys']],'分组后的键必须与扁平列表一字不差';assert len(set(k))==27,len(k);assert sum(1 for x in g if x['wide'])==1,'整行铺开的组只该有企业微信';assert all(f['label'] and f['full'] for x in g for f in x['fields']);print('推送通知分组:','、'.join('%s(%d)'%(x['name'],len(x['fields'])) for x in g))"
 
-      - name: 页脚的「要不要更新」：构建溯源 + /api/update 不会把面板拖垮
+      - name: 「关于本项目」的更新检查：构建溯源 + /api/update 不会把面板拖垮
         run: |
           set -e
           python3 -c "import json;u=json.load(open('state-notice.json',encoding='utf-8'))['update'];print('构建溯源:',u['version'],u['short'],u['date']);assert u['repo'] and u['url'].startswith('https://github.com/'),u;assert u['commit'],'镜像里没生成 PANEL_BUILD.json: %s'%u"
-          # 镜像里记录的提交必须就是这次构建的提交 —— 不然页脚会一直喊「有新版本」。
+          # 镜像里记录的提交必须就是这次构建的提交 —— 不然面板会一直喊「有新版本」。
           # 用 Python 断言而不是 bash 的 test "$(docker exec ...)"：嵌套引号里再塞
           # 引号太容易写错（\" 在单引号里是字面量，传给 Python 直接语法错），
           # 而且断言失败时能把这个值打出来。
@@ -268,7 +268,7 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
-      # 面板页脚的「当前容器要不要更新」就是拿这个提交去跟 GitHub 上 main 的最新提交比。
+      # 设置页「关于本项目」的「当前容器要不要更新」就是拿这个提交去跟 GitHub 上 main 的最新提交比。
       # 不用 github.sha 是有原因的：它在这里等于「这次构建从哪 checkout」，
       # 而 git rev-parse HEAD 拿到的是工作区真实提交，两者一般一样、但后者更直接。
       - name: 计算构建溯源

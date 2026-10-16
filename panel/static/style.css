@@ -578,17 +578,15 @@ dialog::backdrop { background: rgba(10, 14, 22, .5); backdrop-filter: blur(3px);
 .nbox-foot { margin: auto 0 0; min-height: 14px; font-size: 11px; color: var(--fg-3); }
 .nbox-count { color: var(--ok); font-weight: 600; }
 
-/* ---- 页脚：项目地址 + 更新状态 ---- */
-.app-foot {
-  display: flex; align-items: center; gap: 10px;
-  padding: 0 22px 26px;
-  font-size: 11.5px; color: var(--fg-3);
-}
+/* ---- 「项目地址 + 更新状态」那一行小字 ----
+   只在设置页最下方的「关于本项目」里用。首页早先也放过一处右下角常驻小牌，
+   嫌挤，已经删掉 —— .app-foot / .foot-box / .foot-line 那套随之去掉，别再加回来。
+   .foot-repo / .foot-up / .up-dot 就是「一行小字 + 一个状态圆点」的公共零件。 */
 .foot-repo { display: inline-flex; align-items: center; gap: 6px; min-width: 0; color: var(--fg-2); text-decoration: none; }
 .foot-repo:hover { color: var(--brand); }
 .foot-repo svg { flex: none; color: var(--fg-3); }
+/* 仓库名可能被 PANEL_REPO 换成更长的 fork 名，窄屏就省略号 + title 兜底 */
 .foot-repo b { font-size: 12px; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.foot-div { flex: none; width: 1px; height: 13px; background: var(--line-2); }
 .foot-up { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
 .foot-up.ok { color: var(--ok); }
 .foot-up.warn { color: var(--warn); }
@@ -665,11 +663,7 @@ dialog::backdrop { background: rgba(10, 14, 22, .5); backdrop-filter: blur(3px);
 @media (max-width: 720px) {
   header { padding: 11px 14px; gap: 12px; }
   .statbar { display: none; }
-  main, .toolbar, .app-foot { padding-left: 14px; padding-right: 14px; }
-  /* 页脚一行放不下就换行，别把「检查更新」挤出屏幕 */
-  .app-foot { flex-wrap: wrap; gap: 8px; }
-  .app-foot .spacer { flex-basis: 100%; }
-  .foot-div { display: none; }
+  main, .toolbar { padding-left: 14px; padding-right: 14px; }
   .search-wrap { width: 100%; }
   .actions { margin-left: 0; width: 100%; }
   .drawer { width: 100vw; }

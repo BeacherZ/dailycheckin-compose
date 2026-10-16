@@ -187,22 +187,34 @@ check("表单事件仍按 data-notice 取值（保存逻辑没被改坏）",
       'document.querySelectorAll("[data-notice]")' in js and 'data-notice="${esc(key)}"' in js)
 check("保存按钮还在", 'id="btnSaveNotice"' in html)
 
-print("9) 页脚：项目地址 + 当前容器要不要更新")
-check("主界面有页脚区块", 'class="app-foot"' in html)
-check("页脚有项目仓库链接（新窗口打开，别把面板顶掉）",
-      re.search(r'class="foot-repo" id="footRepo"[^>]*target="_blank"[^>]*rel="noopener', html) is not None)
-check("设置页最下方也有「关于本项目」", "关于本项目" in html and 'id="aboutRepo"' in html)
-check("两处共用一套更新状态（footUpdate / aboutUpdate）",
-      'id="footUpdate"' in html and 'id="aboutUpdate"' in html)
-check("两处的「检查更新」都挂在同一个类上", html.count('class="ghost tiny js-check-update"') == 2, html.count('class="ghost tiny js-check-update"'))
-check("app.js 用同一个处理器接住两个按钮",
+print("9) 更新提示：只在设置页最下方（首页不再有那块）")
+# 首页右下角曾有一处常驻小牌，用户嫌挤让删掉了 —— 这组断言就是防止它被加回来
+# （也防止删的时候把设置页那一块一起删掉）。
+check("首页没有页脚区块了", 'app-foot' not in html and '<footer' not in html)
+check("首页也不再有那套页脚 id", not any(i in html for i in ("footRepo", "footUpdate", "footDot", "btnFootCheck")))
+check("页脚专属的样式也清干净了（不留死代码）",
+      not any(s in css for s in (".app-foot {", ".foot-box {", ".foot-line {", "#footRepoName")))
+check("首页引用的 app.js 也不再去找那些 id", "footUpdate" not in js and "footDot" not in js)
+check("设置页最下方有「关于本项目」", "关于本项目" in html and 'id="aboutRepo"' in html)
+check("「关于本项目」里有项目仓库链接（新窗口打开，别把面板顶掉）",
+      re.search(r'class="foot-repo" id="aboutRepo"[^>]*target="_blank"[^>]*rel="noopener', html) is not None)
+check("仓库名用 <b>（.foot-repo b 的省略号样式靠它）", '<b id="aboutRepoName">' in html)
+check("更新状态和「检查更新」按钮都在那一块里",
+      'id="aboutUpdate"' in html and 'class="ghost tiny js-check-update"' in html)
+check("全页只剩一个「检查更新」按钮（首页那个已经删掉）",
+      html.count('class="ghost tiny js-check-update"') == 1, html.count('class="ghost tiny js-check-update"'))
+check("app.js 用同一个处理器接住那个按钮",
       'document.querySelectorAll(".js-check-update").forEach' in js)
-check("页脚先画本地版本、再异步问 /api/update（首屏不等网络）",
+check("先画本地版本、再异步问 /api/update（首屏不等网络）",
       "paintUpdate(st.update)" in js and 'api("/update"' in js)
 check("/api/update 只在点按钮时带 force=1（否则吃后端的 3 小时缓存）",
       'api("/update" + (force ? "?force=1" : ""))' in js)
 check("四种结论都画到了（有新版本 / 已是最新 / 判断不了 / 检查失败）",
-      all(t in js for t in ("有新版本：远端", "已是最新（", "判断不了：本地没记录构建提交", "检查更新失败")))
+      all(t in js for t in ("有新版本（", "已是最新（", "判断不了", "检查更新失败")))
+# 结论文字要短（细节挂 title），别把那一行撑得很难看。
+check("结论文案是短句（细节挂 title）",
+      "有新版本（${remote.short" in js and "已是最新（${info.short}）" in js
+      and "`判断不了${remote.short" in js)
 check("有新版本时给出更新命令", "docker compose pull" in js)
 check("简版的 /api/state 不会把已查到的结论抹掉", "info.checked_at === undefined" in js)
 

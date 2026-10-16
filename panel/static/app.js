@@ -909,12 +909,14 @@
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
   };
 
-  /* 画「项目地址 + 更新状态」。两处共用：主界面页脚、设置页最下方。
+  /* 画「项目地址 + 更新状态」。只有设置页最下方的「关于本项目」用得到 ——
+     首页那处右下角小牌已经删掉，别再加回来。
      结论只有四种，别再自己发明第五种：
        needs_update === true   有新版本，顺手给出更新命令
        needs_update === false  已是最新
        needs_update === null   判断不了（没记录构建提交，或压根还没检查）
-       ok === false            检查失败（网络不通 / 限流），如实说，不假装已是最新 */
+       ok === false            检查失败（网络不通 / 限流），如实说，不假装已是最新
+     文字都往短了写，细节（远端提交说明、日期、更新命令）挂 title。 */
   function paintUpdate(info) {
     if (!info) return;
     // /api/state 带的是「只有本地版本」的简版（没有 checked_at）。已经查到过结果，
@@ -925,12 +927,10 @@
     UP.data = info;
 
     const url = info.url || (info.repo ? "https://github.com/" + info.repo : "");
-    [["footRepo", "footRepoName"], ["aboutRepo", "aboutRepoName"]].forEach(([a, b]) => {
-      const link = $(a);
-      if (link && url) link.href = url;
-      const name = $(b);
-      if (name) name.textContent = info.repo || "项目地址";
-    });
+    const link = $("aboutRepo");
+    if (link && url) link.href = url;
+    const name = $("aboutRepoName");
+    if (name) name.textContent = info.repo || "项目地址";
 
     const build = info.short ? `构建 ${info.short}` : "未记录构建提交";
     if ($("aboutLocal")) $("aboutLocal").textContent = `v${info.version || "?"} · ${build}`;
@@ -944,35 +944,32 @@
     } else if (info.ok === true) {
       if (info.needs_update === true) {
         dot = "warn";
-        text = `有新版本：远端 ${remote.short}${remote.date ? "（" + fmtDay(remote.date) + "）" : ""}`;
+        text = `有新版本（${remote.short || "远端有新提交"}）`;
         brief = "更新命令：docker compose pull && docker compose up -d";
-        tip = `${brief}\n远端最新提交：${remote.message || remote.short}${remote.date ? "　" + fmtDay(remote.date) : ""}`;
+        tip = `远端最新提交：${remote.message || remote.short}${remote.date ? "　" + fmtDay(remote.date) : ""}\n${brief}`;
       } else if (info.needs_update === false) {
         dot = "ok";
         text = `已是最新（${info.short}）`;
         tip = `远端最新提交：${remote.message || remote.short}${remote.date ? "　" + fmtDay(remote.date) : ""}`;
       } else {
         // 本地没记录构建提交（多半是本地直接跑面板），远端信息照样给出来
-        text = `判断不了：本地没记录构建提交${remote.short ? `（远端 ${remote.short}）` : ""}`;
-        brief = "容器版镜像会记录构建提交；本地直接 python -m panel 跑的没有，所以比不了。";
+        text = `判断不了${remote.short ? `（远端 ${remote.short}）` : ""}`;
+        brief = "判断不了：本地没记录构建提交 —— 容器版镜像会记录；本地直接 python -m panel 跑的没有，所以比不了。";
         tip = brief;
       }
     }
 
     // 圆点和文字用同一个状态色：只看颜色就知道是新版本还是已是最新
-    [["footUpdate", "footDot", "footUpdateText"], ["aboutUpdate", "aboutDot", "aboutUpdateText"]].forEach(([wrap, d, t]) => {
-      const el = $(d);
-      if (el) el.className = "up-dot " + dot;
-      const txt = $(t);
-      if (txt) txt.textContent = text;
-      const box = $(wrap);
-      if (box) box.className = "foot-up " + dot;
-    });
-    // 详细解释（远端提交说明、更新命令）挂在 title 上，页面本身保持在两行内。
-    ["footUpdate", "aboutUpdate"].forEach((id) => {
-      const el = $(id);
-      if (el) el.title = tip;
-    });
+    const dotEl = $("aboutDot");
+    if (dotEl) dotEl.className = "up-dot " + dot;
+    const txtEl = $("aboutUpdateText");
+    if (txtEl) txtEl.textContent = text;
+    // 整行也跟着变色；详细解释（远端提交说明、更新命令）挂 title，正文保持精简。
+    const box = $("aboutUpdate");
+    if (box) {
+      box.className = "foot-up " + dot;
+      box.title = tip;
+    }
     const aboutTip = $("aboutTip");
     if (aboutTip) {
       // 设成 textContent 而不是 innerHTML：这里可能带远端提交信息（外部内容）。

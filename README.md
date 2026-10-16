@@ -77,7 +77,7 @@ docker run -d --name dailycheckin --restart unless-stopped -p 8080:8080 -e TZ=As
 docker compose pull && docker compose up -d
 ```
 
-**不用自己记着版本**：面板底部一直显示当前构建的提交，并跟 GitHub 上 `main` 的最新提交对比 —— 有新提交会标成「有新版本」并给出上面这条命令。设置页最下方有同一个状态和一个「检查更新」按钮。
+**不用自己记着版本**：设置页最下方的「关于本项目」显示项目地址、当前构建的提交，和一个「检查更新」按钮。检查是拿**构建这个镜像时的那次提交**跟 GitHub 上 `main` 的最新提交比出来的 —— 有新提交就标成「有新版本（远端提交）」，鼠标悬停能看到具体提交说明和上面那条更新命令。
 
 docker run 方式：`docker pull` 拉新镜像 → `docker rm -f dailycheckin` → 重跑上面那条 `docker run`（四个 `-v` 目录不用变，数据都在）。
 
@@ -253,7 +253,7 @@ docker run 方式：`docker pull` 拉新镜像 → `docker rm -f dailycheckin` �
 | `PANEL_PASSWORD` | 空 | 同上，只在后台还没初始化时生效 |
 | `PANEL_TOKEN` | 空 | **可选**的脚本口令，给 curl / 自动化用（`X-Panel-Token` 头或 `?token=`），**不能替代登录**，不建议开在公网 |
 | `PANEL_RUN_TIMEOUT` | `1800` | 单次签到任务超时秒数（贴吧号多要跑很久） |
-| `PANEL_REPO` | `BeacherZ/dailycheckin-plus` | 页脚链接与「要不要更新」的比对对象，改成自己的 fork 即可 |
+| `PANEL_REPO` | `BeacherZ/dailycheckin-plus` | 「关于本项目」里的项目链接、以及「要不要更新」的比对对象，改成自己的 fork 即可 |
 | `PANEL_GH_TOKEN` | 空 | 可选。访问 GitHub 接口时带上它，避免匿名限流（60 次/小时/IP） |
 | `DC_HOME` | `/dailycheckin` | 工作目录，一般不用改 |
 
@@ -296,7 +296,7 @@ python tools/test_sync_upstream.py    # 补丁重放 / 冲突回滚 / 新站点�
 python tools/test_notice.py           # 通知恒定一条、标题带项目名、结尾指向本项目
 python tools/test_schedule.py         # crontab 托管区块：老标记兼容，不会变成两段任务
 python tools/test_panel_static.py     # 前端契约：首屏不预置登录屏、默认排序、密度、配置弹窗、
-                                      #           推送通知分组方框是否同排等高、页脚更新状态
+                                      #           推送通知分组方框是否同排等高、「关于本项目」的更新状态
 ```
 
 ---
