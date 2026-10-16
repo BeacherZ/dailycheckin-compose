@@ -21,6 +21,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 上游 tarball 里部分文件带可执行位。同步引擎时若没归一化，git 会记录一堆
+      # 「内容一个字没改、只有 mode 从 100644 变 100755」的假改动（Windows 上发现不了），
+      # 还会让 sync 工作流每次白提交一次。这里把它钉死。
+      - name: 引擎文件权限位检查（不许有可执行位）
+        run: |
+          set -e
+          bad=$(git ls-files -s dailycheckin | awk '$1 != "100644" {print $1, $4}')
+          if [ -n "$bad" ]; then
+            echo "以下文件权限位不是 100644："
+            echo "$bad"
+            exit 1
+          fi
+          echo "dailycheckin/ 下 $(git ls-files dailycheckin | wc -l) 个文件权限位正常"
+
       - uses: docker/setup-buildx-action@v3
 
       - name: 构建镜像（Dockerfile 内含引擎自检，装不上会直接失败）

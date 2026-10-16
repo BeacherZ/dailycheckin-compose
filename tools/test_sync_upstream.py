@@ -221,6 +221,39 @@ def main() -> int:
     check("站点清单变了就是有变化", not S._same_except_time(now, dict(now, engine_sites=["X"])))
     check("首次同步（没有旧记录）必须写入", not S._same_except_time({}, now))
 
+    print("\n== 9) 复制引擎源码时要归一化权限位 ==")
+    work = tempfile.mkdtemp(prefix="dc-synctest-")
+    try:
+        src = os.path.join(work, "src", "pkg")
+        os.makedirs(os.path.join(src, "sub"))
+        for rel in ("a.py", "sub/b.py", "__init__.py"):
+            with open(os.path.join(src, rel), "w", encoding="utf-8") as f:
+                f.write("x = 1\n")
+        if os.name == "posix":
+            # 模拟上游 tarball 里带可执行位的文件
+            os.chmod(os.path.join(src, "a.py"), 0o755)
+            os.chmod(os.path.join(src, "sub", "b.py"), 0o775)
+            seen = []
+            for root, _dirs, files in os.walk(os.path.join(src, "sub")):
+                for name in files:
+                    seen.append(oct(os.stat(os.path.join(root, name)).st_mode & 0o777))
+            check("（前置）确实造出了非 644 的源文件", any(m != "0o644" for m in seen), str(seen))
+
+        dst = os.path.join(work, "dst")
+        n = S.copy_tree(src, dst)
+        check("复制报告的文件数与源一致", n == 3, str(n))
+        if os.name == "posix":
+            modes = []
+            for root, _dirs, files in os.walk(dst):
+                for name in files:
+                    modes.append(oct(os.stat(os.path.join(root, name)).st_mode & 0o777))
+            check("复制后全部归一化为 0o644（避免 git 记录假改动）",
+                  set(modes) == {"0o644"}, str(sorted(set(modes))))
+        else:
+            print("  · 跳过权限位断言（当前平台没有 exec 位，交给 Linux CI 把关）")
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
     print("\n" + "=" * 52)
     print("通过 %d 项，失败 %d 项" % (PASS, FAIL))
     return 1 if FAIL else 0

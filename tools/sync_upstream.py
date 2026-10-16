@@ -116,12 +116,32 @@ def extract(tar_bytes: bytes, dest: str) -> str:
     return os.path.join(dest, top)
 
 
-def copy_tree(src: str, dst: str) -> int:
-    """把 src 里的内容复制进 dst（不保留旧的残留文件）。"""
+def _chmod(path: str, mode: int) -> None:
+    try:
+        os.chmod(path, mode)
+    except OSError:
+        pass  # Windows 上权限位语义有限，忽略
+
+
+def copy_tree(src: str, dst: str, file_mode: int = 0o644, dir_mode: int = 0o755) -> int:
+    """把 src 里的内容复制进 dst（不保留旧的残留文件），并归一化权限位。
+
+    权限位必须显式归一化：上游 tarball 里有一部分文件带可执行位，原样拷过来的话，
+    在 Linux 上 `git add` 会记录一堆「内容一个字没改、只有模式从 100644 变 100755」
+    的假改动（Windows 上看不出来，因为 NTFS 没有 exec 位）。本项目的引擎文件
+    一律 0644。
+    """
     if os.path.exists(dst):
         shutil.rmtree(dst)
     shutil.copytree(src, dst, ignore=shutil.ignore_patterns(*SKIP_NAMES, "*.pyc"))
-    return sum(1 for _, _, fs in os.walk(dst) for _ in fs)
+    count = 0
+    for root, dirs, files in os.walk(dst):
+        for name in dirs:
+            _chmod(os.path.join(root, name), dir_mode)
+        for name in files:
+            _chmod(os.path.join(root, name), file_mode)
+            count += 1
+    return count
 
 
 # --------------------------------------------------------------------------- #

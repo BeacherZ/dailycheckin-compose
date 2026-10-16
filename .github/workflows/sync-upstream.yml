@@ -102,6 +102,16 @@ jobs:
           else
             python3 tools/sync_upstream.py
           fi
+
+          # 同步过来的文件必须把权限位归一化成 644，否则 git 会把「只有 mode 变了」
+          # 的文件也算成改动，每次同步都白提交一次。
+          extra=$(find dailycheckin -type f -perm -u+x || true)
+          if [ -n "$extra" ]; then
+            echo "以下引擎文件带上了可执行位，说明没归一化："
+            echo "$extra"
+            exit 1
+          fi
+
           # 同步工具会写 UPSTREAM.json，所以用 git 判断到底有没有变化
           if git diff --quiet && git diff --cached --quiet; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
