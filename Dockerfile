@@ -37,6 +37,9 @@ RUN set -eux; \
 # ---------- 2) 放入网页管理面板（纯标准库实现，不需要安装）----------
 WORKDIR ${DC_HOME}
 COPY panel ./panel
+# 溯源信息：面板「设置 → 环境信息」里显示的引擎版本/上游提交就来自这里，
+# 由 tools/sync_upstream.py 在同步上游时生成。
+COPY UPSTREAM.json ./UPSTREAM.json
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 

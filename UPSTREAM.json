@@ -1,0 +1,50 @@
+{
+  "repo": "Sitoi/dailycheckin",
+  "ref": "main",
+  "commit": "135cc236e59ac4f14bcddc44acb3cbb3ed6010b5",
+  "commit_date": "2026-07-09T08:56:15Z",
+  "version": "25.12.9",
+  "synced_at": "2026-10-16T01:53:53Z",
+  "sync_tool": "tools/sync_upstream.py",
+  "patches": [
+    "0001-bilibili-newlist.patch",
+    "0002-notice-single-message.patch"
+  ],
+  "engine_sites": [
+    "ACFUN",
+    "ALIYUN",
+    "AOLAXING",
+    "BAIDU",
+    "BAIDUWP",
+    "BILIBILI",
+    "ENSHAN",
+    "FNNASCLUB",
+    "IMAOTAI",
+    "IQIYI",
+    "KGQQ",
+    "MIMOTION",
+    "SMZDM",
+    "TIEBA",
+    "V2EX",
+    "YOUDAO"
+  ],
+  "tracked_files": {
+    "requirements.txt": {
+      "upstream_sha256": "b20fc1decb05cf7e62b27ba7f3c7961e2e4eeb4bb4db1b5059709c1ac0b45840",
+      "local": "same"
+    },
+    "pyproject.toml": {
+      "upstream_sha256": "246d1d1ca1b2786ddc24656f752048d43fdf9ecf87e2bcb8ead828c9833fe17b",
+      "local": "same"
+    },
+    "setup.py": {
+      "upstream_sha256": "00d3f0df4503918562d792df45a68119e0e7099b5041fea3e356570a7346b08c",
+      "local": "modified"
+    },
+    "LICENSE": {
+      "upstream_sha256": "e7f3a06f4801475d647509f25a66073a408f2a9cde3277ba31f4e924b8fbb1be",
+      "local": "same"
+    }
+  },
+  "note": "引擎源码来自上游，patches/ 里的补丁在同步后自动重放。不要手工覆盖 dailycheckin/。"
+}

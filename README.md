@@ -38,6 +38,7 @@
 - ⏰ **定时任务**网页配置，只改自己那段 crontab，不动你别的任务
 - 🔔 推送渠道全覆盖，**支持合并成一条**
 - 🛡️ `config.json` 原文编辑 + 每次保存前自动备份（保留 30 份，可一键恢复）
+- 🔄 **上游加了新签到站点会自动出现**，一条命令同步引擎、自动重放本地补丁（[见下](#跟随上游更新)）
 
 **运行时**
 
@@ -289,24 +290,83 @@ docker compose -f docker-compose.build.yml up -d --build
 
 ---
 
+## 跟随上游更新
+
+本项目把引擎源码**内置**在 `dailycheckin/` 里（而不是从 PyPI 装），好处是构建可复现、离线能编译、打过的补丁不会丢；代价是**上游更新不会自己流进来**，得显式同步一次。上游仓库：[Sitoi/dailycheckin](https://github.com/Sitoi/dailycheckin)。
+
+同步已经做成一条命令。**不要手工把上游 `dailycheckin/` 目录盖过来** —— 那会悄悄抹掉 `patches/` 里的两个本地修复（B 站接口、通知合并成一条）。
+
+### 1. 先看有没有更新
+
+```bash
+python tools/sync_upstream.py --check
+```
+
+只查不改，几秒钟出结果：上游最新提交、本项目记录在案的提交、站点模块增减、哪些新站点还没元数据。退出码 `2` 表示有新东西可同步。
+
+### 2. 同步
+
+```bash
+python tools/sync_upstream.py                 # 同步到 UPSTREAM.json 里记录的 ref（默认 main）
+python tools/sync_upstream.py --ref 25.12.9   # 指定 tag / 分支 / commit
+python tools/sync_upstream.py --dry-run       # 只比对，不落地
+```
+
+它会：下载上游源码 → 替换 `dailycheckin/` → **重放 `patches/` 里的本地补丁** → 更新 `UPSTREAM.json` → 报告站点目录变化与元数据缺口。任何补丁打不上就**整体回滚**，并指出是哪个文件哪段代码对不上，绝不会留下改了一半的引擎。
+
+同步完照常提交推送，CI 会自动重建镜像：
+
+```bash
+git add -A && git commit -m "chore: 同步上游引擎" && git push
+```
+
+### 3. 或者点一下按钮
+
+仓库 → **Actions → sync upstream → Run workflow**（可填 ref）。它会同步、提交、推送，并顺手把镜像重建发布到 ghcr.io。之所以自己构建而不是等 `build` 工作流，是因为用 `GITHUB_TOKEN` 推的提交不会再触发其它工作流（GitHub 防递归）。同一个工作流每周一还会自动检查一次，上游有新提交就开 issue 提醒。
+
+### 4. 上游新增站点后，会看到什么
+
+站点是引擎按 `CheckIn.__subclasses__()` 自动发现的，面板只是读引擎，所以：
+
+- **开箱可用**：新站点自动出现在卡片列表里，能填 cookie、能保存、能签到；
+- **精细度降一档**：面板不知道它的必填 cookie 字段（不做格式拦截）、没有在线校验按钮、LOGO 退回 🧩，卡片上会挂一个「通用配置」标记。
+
+想要完整体验，照着 `panel/catalog.py` 里已有的写法补一段元数据即可（`required` / `verify` / `logo` / `howto` / `fields`）。同步结束时会打印「哪些站点还没有元数据」的清单，按那张清单补就行。
+
+任何时候都能自测这套补丁/同步机制是否还好使（离线，不需要网络）：
+
+```bash
+python tools/test_sync_upstream.py
+```
+
+---
+
 ## 目录结构
 
 ```
 .
 ├── docker-compose.yml          # 一键部署（用 ghcr.io 现成镜像）
 ├── docker-compose.build.yml    # 从源码构建版
-├── Dockerfile                  # 引擎 + 面板，多阶段构建
+├── Dockerfile                  # 引擎 + 面板
+├── UPSTREAM.json               # 引擎溯源：上游仓库 / ref / commit / 版本 / 本地补丁清单
+├── patches/                    # 相对上游的本地补丁（同步时自动重放）
+│   ├── 0001-bilibili-newlist.patch
+│   └── 0002-notice-single-message.patch
+├── tools/                      # 引擎同步工具（纯标准库，不参与镜像构建）
+│   ├── sync_upstream.py        # --check 查更新 / --ref 同步并重放补丁
+│   └── test_sync_upstream.py   # 补丁重放、冲突回滚、新站点降级的离线自测
 ├── panel/                      # 网页管理后台（纯标准库，零额外依赖）
 │   ├── server.py               # HTTP 服务、路由、鉴权
 │   ├── auth.py                 # 后台账号密码与会话票据
 │   ├── cookies.py              # cookie 解析与规范化
 │   ├── catalog.py              # 站点元数据（必填字段、LOGO、怎么拿 cookie）
+│   ├── upstream.py             # 读 UPSTREAM.json，给面板显示引擎来源
 │   ├── verify.py               # 各站点在线登录态校验
 │   ├── runner.py               # 跑签到、解析输出、回写有效性状态
 │   ├── store.py                # config.json 读写 + 备份
 │   ├── schedule.py             # crontab 管理
 │   └── static/                 # 单页界面（原生 HTML/CSS/JS，无构建步骤）
-├── dailycheckin/               # 签到引擎（来自上游，含 B 站接口修复）
+├── dailycheckin/               # 签到引擎（上游源码 + patches/ 补丁）
 └── docker/entrypoint.sh        # 容器入口：准备配置 → 装定时任务 → 起 crond + 面板
 ```
 
@@ -340,6 +400,9 @@ docker stop dailycheckin && docker rm dailycheckin
 
 然后把原 `config/config.json` 复制到本项目 `config/`，`docker compose up -d` 即可，站点和账号自动识别。原来那种「pip 升级后手打补丁」的 cron 也可以删了。
 
+**Q：上游更新了签到网站目录，我怎么更新？**
+一条命令：`python tools/sync_upstream.py`（它会自动重放 `patches/` 里的本地补丁，冲突就整体回滚），然后在 Actions 里点一下 **sync upstream** 也行。**别手工覆盖 `dailycheckin/`**，那样会丢掉本地修复。详见上面的「跟随上游更新」。
+
 **Q：B 站日志里「直播签到：签到活动已下线」是 bug 吗？**
 不是。B 站自己下线了直播签到活动，任何工具都做不了，不影响其它签到项。
 
@@ -350,6 +413,8 @@ docker stop dailycheckin && docker rm dailycheckin
 上游的分区视频接口 `/x/web-interface/dynamic/region` 已下线，返回 `{"code":-404,"data":null}`，而代码写的是 `ret.get("data", {}).get("archives", [])` —— key 存在只是值为 `None`，兜底默认值不生效，于是抛 `AttributeError`，被 `main()` 捕获成一句 `❌❌❌❌❌`。
 
 本仓库已改用出入参一致的 `/x/web-interface/newlist`，并给 `data` 为 `None` 的几处调用补了空值兜底、空 `aid_list` 保护。该修复也已提 PR 到上游（[Sitoi/dailycheckin#592](https://github.com/Sitoi/dailycheckin/pull/592)），上游合并后本仓库可直接跟随。
+
+这段修复以补丁形式保存在 `patches/0001-bilibili-newlist.patch`，同步上游时会自动重放。等上游合并了这个 PR，把该补丁文件删掉即可（同步工具按 `patches/` 目录里实际存在的补丁来跑），不用改代码。
 
 ---
 

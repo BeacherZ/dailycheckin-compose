@@ -329,6 +329,7 @@
     <span class="muted" style="font-size:12px">凭据类型：${site.credential === "cookie" ? "Cookie" : "账号 / 表单"}</span>
     <span class="muted" style="font-size:12px">${req}</span>
     ${site.verify ? "" : `<span class="badge unknown">无在线校验接口</span>`}
+    ${site.known === false ? `<span class="badge unknown" title="上游新加的站点，本项目还没为它单独写元数据：不会提示必填字段、LOGO 退回 emoji，签到与保存都正常">通用配置</span>` : ""}
   </div>
   ${blocks}
   <div class="row">
@@ -758,10 +759,19 @@
       ? bks.map((b) => `<option value="${esc(b.name)}">${esc(b.name)}</option>`).join("")
       : `<option value="">（暂无备份）</option>`;
 
-    $("envInfo").textContent = [
+    const up = (st.engine && st.engine.upstream) || {};
+    const gaps = (st.engine && st.engine.sites_without_meta) || [];
+    const lines = [
       `面板版本   : ${st.panel.version}`,
       `引擎版本   : ${st.engine.version || "未知"}`,
       `引擎状态   : ${st.engine.ok ? "正常" : "异常"} — ${st.engine.message}`,
+      up.commit
+        ? `引擎来源   : ${up.repo} @ ${up.ref} · ${up.commit}${up.commit_date ? "（" + up.commit_date.slice(0, 10) + "）" : ""}`
+        : "引擎来源   : 未记录溯源信息",
+      up.synced_at
+        ? `同步于     : ${up.synced_at}${up.patches && up.patches.length ? " · 本地补丁 " + up.patches.length + " 个" : ""}`
+        : null,
+      gaps.length ? `待补元数据 : ${gaps.join("、")}（可正常签到，只是没有必填字段提示与在线校验）` : null,
       `工作目录   : ${st.panel.home}`,
       `配置文件   : ${st.panel.config_path}`,
       `后台账号   : ${(S.auth && S.auth.username) || st.panel.user || "未设置"}`,
@@ -769,7 +779,8 @@
       `脚本口令   : ${st.panel.token_bypass ? "已启用 PANEL_TOKEN" : "未启用"}`,
       `时区       : ${st.panel.tz}`,
       `面板时间   : ${fmtTime(st.server_time)}`,
-    ].join("\n");
+    ];
+    $("envInfo").textContent = lines.filter((l) => l !== null).join("\n");
 
     $("settings").showModal();
   }

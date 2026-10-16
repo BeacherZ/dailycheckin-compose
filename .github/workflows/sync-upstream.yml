@@ -1,0 +1,178 @@
+name: sync upstream
+
+# 本项目的签到引擎是「内置上游源码 + 本地补丁」，上游更新不会自己流进来。
+# 这个工作流负责把它拉进来：
+#
+#   * 手动触发（Run workflow）：同步 → 重放补丁 → 提交 → 重建并发布镜像，一步到位。
+#   * 每周一自动检查：只比对上游有没有新提交，有就开一个 issue 提醒，不动代码。
+#
+# 为什么不靠「提交后让 build.yml 的 push 事件去构建」：用 GITHUB_TOKEN 推的提交
+# 不会再触发其它工作流（GitHub 防递归），所以这里同步完必须自己把镜像构建掉。
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "上游 ref（tag / 分支 / commit），留空则沿用 UPSTREAM.json 里记录的"
+        required: false
+        default: ""
+      publish:
+        description: "同步后重建并发布镜像到 ghcr.io"
+        type: boolean
+        default: true
+  schedule:
+    - cron: "0 1 * * 1" # 每周一 09:00（北京时间）
+
+permissions:
+  contents: write
+  packages: write
+  issues: write
+
+jobs:
+  # ------------------------------------------------------------------ #
+  # 定时：只检查，不改代码
+  # ------------------------------------------------------------------ #
+  check:
+    name: 检查上游是否有更新
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 比对上游
+        id: check
+        run: |
+          set +e
+          python3 tools/sync_upstream.py --check | tee check.txt
+          code=${PIPESTATUS[0]}
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          {
+            echo "### 上游同步检查"
+            echo '```'
+            cat check.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+
+      - name: 有更新就开 issue 提醒
+        if: steps.check.outputs.exit_code == '2'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          TITLE="上游 dailycheckin 有更新，可以同步了"
+          if gh issue list --state open --search "$TITLE in:title" --json title -q '.[].title' | grep -qF "$TITLE"; then
+            echo "已有未关闭的提醒 issue，跳过"
+            exit 0
+          fi
+          {
+            echo "定时检查发现上游仓库有新的提交，站点目录也可能变了。"
+            echo ""
+            echo "处理方式（任选其一）："
+            echo ""
+            echo "1. 本地跑：\`python tools/sync_upstream.py\`，然后提交推送；"
+            echo "2. 打开 [Actions → sync upstream](../../actions/workflows/sync-upstream.yml)，点 Run workflow。"
+            echo ""
+            echo '```'
+            cat check.txt
+            echo '```'
+          } > body.md
+          gh issue create --title "$TITLE" --body-file body.md
+
+  # ------------------------------------------------------------------ #
+  # 手动：同步 + 提交 + 发布镜像
+  # ------------------------------------------------------------------ #
+  sync:
+    name: 同步上游并发布镜像
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 同步上游引擎（自动重放 patches/ 里的补丁）
+        id: sync
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REF: ${{ inputs.ref }}
+        run: |
+          set -e
+          if [ -n "$REF" ]; then
+            python3 tools/sync_upstream.py --ref "$REF"
+          else
+            python3 tools/sync_upstream.py
+          fi
+          # 同步工具会写 UPSTREAM.json，所以用 git 判断到底有没有变化
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "上游内容与当前一致，无需提交"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            git diff --stat
+          fi
+
+      - name: 提交并推送
+        if: steps.sync.outputs.changed == 'true'
+        run: |
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          VERSION=$(python3 -c "import json;print(json.load(open('UPSTREAM.json',encoding='utf-8'))['version'])")
+          git add -A
+          git commit -m "chore: 同步上游签到引擎 ${VERSION}
+
+          由 tools/sync_upstream.py 生成：替换 dailycheckin/ 源码并重放 patches/ 里的本地补丁。"
+          git push
+
+      - name: 面板与引擎的离线自测
+        run: |
+          set -e
+          python3 tools/test_sync_upstream.py
+          python3 -c "import json;s=json.load(open('UPSTREAM.json',encoding='utf-8'));print('同步到',s['repo'],'@',s['ref'],s['commit'][:10],'| 引擎版本',s['version'],'| 站点',len(s['engine_sites']),'个')"
+
+      - uses: docker/setup-buildx-action@v3
+        if: inputs.publish
+
+      - name: 登录 GHCR
+        if: inputs.publish
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 计算镜像标签
+        if: inputs.publish
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=short
+
+      - name: 构建并推送镜像
+        if: inputs.publish
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: 汇总
+        env:
+          CHANGED: ${{ steps.sync.outputs.changed }}
+          PUBLISH: ${{ inputs.publish }}
+        run: |
+          set -e
+          ENGINE=$(python3 -c "import json;s=json.load(open('UPSTREAM.json',encoding='utf-8'));print(s['repo']+'@'+s['ref']+' '+s['commit'][:10]+' v'+s['version'])")
+          {
+            echo "### 上游同步结果"
+            echo ""
+            echo "- 是否有代码变化：\`$CHANGED\`"
+            echo "- 是否发布镜像：\`$PUBLISH\`"
+            echo "- 引擎信息：\`$ENGINE\`"
+          } >> "$GITHUB_STEP_SUMMARY"

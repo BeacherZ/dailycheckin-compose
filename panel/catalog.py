@@ -299,9 +299,14 @@ def engine_sites() -> dict[str, str]:
     return scan_source()
 
 
-def all_sites() -> list[dict]:
-    """合并「引擎发现的站点」与「手工元数据」，返回给前端。"""
-    discovered = engine_sites()
+def merge_sites(discovered: dict) -> list[dict]:
+    """把「引擎发现的站点」与「手工元数据」合并成前端要的结构。
+
+    抽成独立函数是为了能脱离真实引擎直接测试：上游新加站点时，它会走到
+    「元数据缺失」那条分支 —— label 取引擎里的中文名、LOGO 退回 emoji、
+    `required` 为空（不做格式拦截）、`verify` 为空（没有在线校验按钮）、
+    `known` 为 False（前端标注「通用配置」），其余能力照旧可用。
+    """
     keys = sorted(set(discovered) | set(SITE_META))
     out: list[dict] = []
     for key in keys:
@@ -327,6 +332,16 @@ def all_sites() -> list[dict]:
             }
         )
     return out
+
+
+def all_sites() -> list[dict]:
+    """合并「引擎发现的站点」与「手工元数据」，返回给前端。"""
+    return merge_sites(engine_sites())
+
+
+def missing_meta() -> list[str]:
+    """引擎里有、但 panel/catalog.py 还没写元数据的站点。"""
+    return sorted(k for k in engine_sites() if k not in SITE_META)
 
 
 def site_meta(key: str) -> dict:

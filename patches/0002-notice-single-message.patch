@@ -1,0 +1,88 @@
+# 上游仓库: https://github.com/Sitoi/dailycheckin
+# 适用文件: dailycheckin/utils/message.py
+# 用途    : 通知：默认合并成一条，站点之间用分隔行隔开；修正 merge_push 空字符串被当成「不合并」的坑
+# 应用方式: git apply -p1 < patches/0002-notice-single-message.patch   （本项目由 tools/sync_upstream.py 自动重放）
+
+--- a/dailycheckin/utils/message.py
++++ b/dailycheckin/utils/message.py
+@@ -222,7 +222,10 @@
+ 
+ 
+ def important_notice():
+-    datas = requests.get(url="https://api.github.com/repos/Sitoi/dailycheckin/issues?state=open&labels=通知").json()
++    datas = requests.get(
++        url="https://api.github.com/repos/Sitoi/dailycheckin/issues?state=open&labels=通知",
++        timeout=15,
++    ).json()
+     if datas:
+         data = datas[0]
+         title = data.get("title")
+@@ -232,6 +235,26 @@
+     else:
+         notice = None
+     return notice
++
++
++# 各站点签到结果之间的分隔行。用全角破折号：所有推送渠道都能正常显示，
++# 不会被当成 markdown 语法，也不会像方块字符那样在不同字体下变成乱码。
++SEPARATOR = "\n" + "—" * 22 + "\n"
++
++
++def _as_bool(value, default: bool) -> bool:
++    """把配置里的真假值解析成 bool。
++
++    config.json 里 `MERGE_PUSH` 常常是空字符串（面板生成的空模板就是 ""），
++    而 `"" is None` 为假 —— 原来的 `if merge_push is None` 判断会因此走进
++    「不合并」分支，把一条通知拆成好几条发出去。这里统一把空值当默认值。
++    """
++    if value is None:
++        return default
++    text = str(value).strip().lower()
++    if text == "":
++        return default
++    return text not in ("0", "false", "no", "off", "none", "null")
+ 
+ 
+ def push_message(content_list: list, notice_info: dict):
+@@ -266,33 +289,19 @@
+     ntfy_url = notice_info.get("ntfy_url")
+     ntfy_topic = notice_info.get("ntfy_topic")
+     ntfy_priority = notice_info.get("ntfy_priority")
+-    content_str = "\n————————————\n\n".join(content_list)
+-    merge_push = notice_info.get("merge_push")
+-    message_list = [content_str]
++
++    blocks = [one for one in content_list if str(one or "").strip()]
+     try:
+         notice = important_notice()
+         if notice:
+-            message_list.append(notice)
+-            content_list.append(notice)
++            blocks.append(notice)
+     except Exception as e:
+         print("获取重要通知失败:", e)
+-    if merge_push is None:
+-        if (
+-            qmsg_key
+-            or coolpushskey
+-            or qywx_touser
+-            or qywx_corpsecret
+-            or qywx_agentid
+-            or bark_url
+-            or pushplus_token
+-            or ntfy_topic
+-            or (gotify_url and gotify_token)
+-        ):
+-            merge_push = False
+-        else:
+-            merge_push = True
+-    if not merge_push:
+-        message_list = content_list
++
++    content_str = SEPARATOR.join(blocks)
++    # 默认合并成一条：站点之间用分隔行隔开，比一次甩出七八条消息好读得多。
++    merge_push = _as_bool(notice_info.get("merge_push"), True)
++    message_list = [content_str] if merge_push else blocks
+     for message in message_list:
+         if qmsg_key:
+             try:

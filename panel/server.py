@@ -15,7 +15,7 @@ import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import auth, catalog, cookies as ck, paths, runner, schedule, store, verify
+from . import auth, catalog, cookies as ck, paths, runner, schedule, store, upstream, verify
 
 PANEL_VERSION = "2.0.0"
 MAX_BODY = 4 * 1024 * 1024
@@ -101,6 +101,9 @@ def build_state() -> dict:
             }
         )
     notice = {key: data.get(key, "") for key in store.NOTICE_KEY_NAMES}
+    # 上游新加了站点、但 panel/catalog.py 还没给它写元数据时，面板仍然能配置和签到，
+    # 只是没有必填字段提示、没有在线校验。把这类站点列出来，前端会打个「通用配置」标记。
+    without_meta = [s["key"] for s in sites if not s.get("known")]
     return {
         "panel": {
             "title": paths.TITLE,
@@ -112,7 +115,12 @@ def build_state() -> dict:
             "user": auth.username(),
             "auth_since": auth.created_at(),
         },
-        "engine": {**runner.probe_engine(), "version": engine_version()},
+        "engine": {
+            **runner.probe_engine(),
+            "version": engine_version(),
+            "upstream": upstream.info(),
+            "sites_without_meta": without_meta,
+        },
         "sites": sites,
         "notice_keys": [{"key": k, "label": v} for k, v in store.NOTICE_KEYS],
         "notice": notice,
