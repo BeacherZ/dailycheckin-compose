@@ -466,7 +466,7 @@ docker compose pull && docker compose up -d
 **Q：项目从 `dailycheckin-compose` 改名叫 `dailycheckin-plus` 了，我要做什么？**
 三件事，各花一分钟：
 
-1. **换镜像名**：旧镜像 `ghcr.io/beacherz/dailycheckin-compose` 已不再更新，改用 `ghcr.io/beacherz/dailycheckin-plus:latest`。compose 用户把 `image:` 那行改掉；docker run 用户按上面「方式二」的最后一段重跑一次。
+1. **换镜像名**：旧镜像 `ghcr.io/beacherz/dailycheckin-compose` **已从 Packages 里删除**（再拉会报 403 denied），改用 `ghcr.io/beacherz/dailycheckin-plus:latest`。compose 用户把 `image:` 那行改掉；docker run 用户按上面「方式二」的最后一段重跑一次。
 2. **容器名不用动**：`container_name: dailycheckin` 故意保持没改 —— 改了会变成「新容器 + 旧容器」两份同时在跑，通知就会收到两条。
 3. **crontab 不用手动改**：老标记 `dailycheckin-compose managed` 面板照样认，保存定时设置时自动升级成新标记。
 
