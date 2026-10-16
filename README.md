@@ -179,9 +179,9 @@ docker run 方式：`docker pull` 拉新镜像 → `docker rm -f dailycheckin` �
 【dailycheckin-plus 每日签到 · 2026-10-16】
 
 「V2EX 论坛」
-帐号信息: BZGOGO
+帐号信息: ABC
 今日签到: 20261016 的每日登录奖励 13 铜币
-帐号余额: 38259.34
+帐号余额: 8888
 
 ————————————
 
