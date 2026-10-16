@@ -89,7 +89,7 @@ def main() -> int:
         parsed = S.parse_udiff(text)
         name = os.path.basename(path)
         parsed_all[name] = (text, parsed)
-        check("%s 解析出 1 个目标文件" % name, len(parsed) == 1, str([p for p, _ in parsed]))
+        check("%s 解析出目标文件" % name, len(parsed) >= 1, str([p for p, _ in parsed]))
         for rel, hunks in parsed:
             check("%s 目标是 dailycheckin/ 下的文件" % name, rel.startswith("dailycheckin/"), rel)
             check("%s 目标文件存在" % name, os.path.isfile(os.path.join(S.ROOT, rel)), rel)
@@ -99,7 +99,11 @@ def main() -> int:
     work = tempfile.mkdtemp(prefix="dc-synctest-")
     try:
         for name, (text, parsed) in parsed_all.items():
-            for rel, _hunks in parsed:
+            # 一个补丁可能同时改好几个文件，正反向都要按文件取自己那份 hunk，
+            # 否则会把 A 文件的 hunk 套到 B 文件上，报「原文找不到」。
+            rev_map = {rel: hunks for rel, hunks in S.parse_udiff(reverse(text))}
+            fwd_map = {rel: hunks for rel, hunks in parsed}
+            for rel in fwd_map:
                 src = os.path.join(S.ROOT, rel)
                 dst = os.path.join(work, rel)
                 os.makedirs(os.path.dirname(dst), exist_ok=True)
@@ -107,16 +111,14 @@ def main() -> int:
                 original = open(dst, encoding="utf-8").read()
 
                 # 先反向，回到未打补丁的状态
-                for _rel, hunks in S.parse_udiff(reverse(text)):
-                    S.apply_udiff_file(dst, hunks)
+                S.apply_udiff_file(dst, rev_map[rel])
                 mid = open(dst, encoding="utf-8").read()
-                check("%s 反向应用后内容变化" % name, mid != original)
+                check("%s %s 反向应用后内容变化" % (name, rel), mid != original)
 
                 # 再正向，应当逐字节回到原样
-                for _rel, hunks in parsed:
-                    S.apply_udiff_file(dst, hunks)
+                S.apply_udiff_file(dst, fwd_map[rel])
                 back = open(dst, encoding="utf-8").read()
-                check("%s 往返后逐字节还原" % name, back == original,
+                check("%s %s 往返后逐字节还原" % (name, rel), back == original,
                       "长度 %d -> %d" % (len(original), len(back)))
 
     finally:
@@ -126,25 +128,23 @@ def main() -> int:
     work = tempfile.mkdtemp(prefix="dc-synctest-")
     try:
         for name, (text, parsed) in parsed_all.items():
+            rev_map = {r: h for r, h in S.parse_udiff(reverse(text))}
             for rel, hunks in parsed:
                 src = os.path.join(S.ROOT, rel)
                 dst = os.path.join(work, rel)
                 os.makedirs(os.path.dirname(dst), exist_ok=True)
                 # 模拟上游在文件头部插入了 5 行（行号整体下移）
                 body = open(src, encoding="utf-8").read()
-                shifted = "# 上游新加的头几行\n" * 5 + body
                 # 此时文件里已经没有补丁要加的代码了（因为它是打过补丁的版本），
                 # 所以先反向回到原始状态再加漂移
                 open(dst, "w", encoding="utf-8", newline="").write(body)
-                for _r, hs in S.parse_udiff(reverse(text)):
-                    S.apply_udiff_file(dst, hs)
+                S.apply_udiff_file(dst, rev_map[rel])
                 base = open(dst, encoding="utf-8").read()
                 open(dst, "w", encoding="utf-8", newline="").write("# 上游新加的头几行\n" * 5 + base)
-                for _r, hs in parsed:
-                    S.apply_udiff_file(dst, hs)
+                S.apply_udiff_file(dst, hunks)
                 got = open(dst, encoding="utf-8").read()
                 want = "# 上游新加的头几行\n" * 5 + body
-                check("%s 行号漂移后仍能应用" % name, got == want)
+                check("%s %s 行号漂移后仍能应用" % (name, rel), got == want)
 
     finally:
         shutil.rmtree(work, ignore_errors=True)
@@ -154,12 +154,12 @@ def main() -> int:
     try:
         name, (text, parsed) = sorted(parsed_all.items())[0]
         rel, hunks = parsed[0]
+        rev_map = {r: h for r, h in S.parse_udiff(reverse(text))}
         dst = os.path.join(work, rel)
         os.makedirs(os.path.dirname(dst), exist_ok=True)
         body = open(os.path.join(S.ROOT, rel), encoding="utf-8").read()
         open(dst, "w", encoding="utf-8", newline="").write(body)
-        for _r, hs in S.parse_udiff(reverse(text)):
-            S.apply_udiff_file(dst, hs)
+        S.apply_udiff_file(dst, rev_map[rel])
         # 把补丁期望的某一行彻底改掉，模拟上游重写
         broken = open(dst, encoding="utf-8").read()
         target_line = [l for l in hunks[0][1] if l.strip()][0]
