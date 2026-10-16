@@ -133,6 +133,12 @@ check("顶栏按钮带内联图标", html.count("<button") >= 4 and 'id="btnRunA
 check("下拉框去掉了原生箭头（自绘 chevron）", "appearance: none" in css and "background-position: right 9px center" in css)
 check("开关是自绘滑块", ".switch input::after" in css)
 check("统计数字用等宽数字", "font-variant-numeric: tabular-nums" in css)
+# 基础 button 是 inline-flex，而 inline-flex 的默认 justify-content 是 flex-start ——
+# 不显式居中，凡是 width:100% 的按钮（登录/首次设置那两个 .block）文字就贴着左边。
+check("按钮内容显式居中（width:100% 的按钮才不会把文字挤到左边）",
+      re.search(r"(^|\n)button\s*\{[^}]*justify-content:\s*center", css) is not None)
+check("登录/首次设置那个整行按钮用的是 .block（走上面这条居中）",
+      'class="primary block" id="gateSubmit"' in html)
 
 print("7) 站点配置走弹窗，不再就地展开卡片")
 check("index.html 里有站点配置弹窗", re.search(r'<dialog id="siteDlg"', html) is not None)

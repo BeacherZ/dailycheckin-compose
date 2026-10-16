@@ -159,6 +159,10 @@ button.block { width: 100%; padding: 11px; font-size: 14px; border-radius: var(-
 button {
   display: inline-flex;
   align-items: center;
+  /* 必须显式居中：inline-flex 的默认是 justify-content: flex-start，
+     内容不加约束就贴左边 —— 只有 width:100% 的按钮（如登录那个 .block）
+     看得出来，一直看着像「文字偏左」。 */
+  justify-content: center;
   gap: 6px;
   border: 1px solid var(--line-2);
   background: var(--surface);
