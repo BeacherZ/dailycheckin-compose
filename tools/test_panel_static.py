@@ -23,6 +23,7 @@
 import os
 import re
 import sys
+import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATIC = os.path.join(ROOT, "panel", "static")
@@ -217,7 +218,13 @@ check("只有字段最多的那一组整行铺开", sum(1 for g in groups if g["
 check("每组都给得出短标签和完整标签（title 要用）",
       all(f["label"] and f["full"] for g in groups for f in g["fields"]))
 update_src = open(os.path.join(ROOT, "panel", "update.py"), encoding="utf-8").read()
-check("构建溯源读不到时返回空提交（而不是编一个）", update.build_stamp().get("commit") == "")
+# 注意：别断言 build_stamp() 在本仓库里返回空 —— CI 是带 .git 的 checkout，
+# 那里它读得到 HEAD（本地没 .git 才读不到）。要断言「拿不到就别编」，
+# 得指一个确定不是仓库的目录。
+check("构建溯源在非仓库目录下返回空提交（不编造）",
+      update._git_stamp(tempfile.mkdtemp())["commit"] == "")
+check("页脚与更新检查用的是同一个锚点（local_info 与 build_stamp 一致）",
+      update.local_info("9.9.9")["commit"] == update.build_stamp()["commit"])
 check("远端提交和本地提交都认得出才敢下「要不要更新」的结论",
       "(mine != theirs) if (mine and theirs) else None" in update_src)
 check("检查结果有缓存（GitHub 匿名接口 60 次/小时，不能当心跳打）",
