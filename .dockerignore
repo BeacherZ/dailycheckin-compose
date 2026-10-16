@@ -17,6 +17,7 @@ logs
 data
 .env
 
-# 文档不参与构建
+# 文档与截图不参与构建
 *.md
 !README.md
+index.png
