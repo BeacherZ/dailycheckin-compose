@@ -10,6 +10,10 @@
 2. **默认排序是「已配置优先」**，卡片一行 4 个、列表一行 2 个。
 3. localStorage 一律走 lsGet/lsSet —— 隐私模式下它会抛异常，
    不能因为读不到一个本地偏好就把整个面板搞崩。
+4. **同排卡片必须等高**。meta 那行文案长短差很多（B 站会多出「普通会员 |
+   硬币 1223 | 等级 5」这种尾巴），一旦允许它换行，那一张就会比同排高出一截
+   （用户报的「第一个站点卡片比其他的高」）。所以 meta 固定单行 + 写死高度，
+   完整文案挂到 title 上。
 
 跑法：python3 tools/test_panel_static.py
 """
@@ -103,6 +107,30 @@ check("列表窄屏回单列", ".list { grid-template-columns: 1fr; }" in media_
 check("单列布局下取消展开卡片的跨列", "grid-column: auto" in media_block(820))
 check("卡片展开时跨两列", re.search(r"\.card\.open\s*\{\s*grid-column: span 2", css) is not None)
 check("app.js 给展开的卡片加 open 类", 'class="card${open ? " open" : ""}"' in js)
+
+print("5) 同排卡片等高：meta 固定单行")
+meta_css = rule(".card-meta")
+check("meta 不换行", "white-space: nowrap" in meta_css, meta_css.strip()[:110])
+check("meta 溢出用省略号", "overflow: hidden" in meta_css and "text-overflow: ellipsis" in meta_css, meta_css.strip()[:110])
+mh = re.search(r"height:\s*(\d+(?:\.\d+)?)px", meta_css)
+mlh = re.search(r"line-height:\s*(\d+(?:\.\d+)?)px", meta_css)
+mpb = re.search(r"padding:\s*0\s+\d+px\s+(\d+(?:\.\d+)?)px", meta_css)
+check("meta 高度写死了（不是靠内容撑）", bool(mh), meta_css.strip()[:110])
+check("height 正好 = 行高 + 下间距（改 padding 时这里会红，提醒一起改）",
+      bool(mh and mlh and mpb) and float(mh.group(1)) == float(mlh.group(1)) + float(mpb.group(1)),
+      f"height={mh and mh.group(1)} line-height={mlh and mlh.group(1)} padding-bottom={mpb and mpb.group(1)}")
+check("完整 meta 挂到 title 上（截断的部分还能看到）", 'class="card-meta" title=' in js)
+check("展开/收起后 meta 的 title 也跟着更新", "el.title = el.textContent" in js)
+
+print("6) 视觉基建：统计条 / 图标 / 状态点")
+check("顶栏统计收成一条 .statbar，不再是堆 .pill", 'class="statbar"' in html and 'class="pill' not in html)
+check("统计项之间有分隔线", ".stat + .stat { border-left" in css)
+check("状态徽章带前置圆点", ".badge::before" in css)
+check("展开箭头是自绘 SVG 而不是字符 ▶", "▶" not in js and "const CHEVRON" in js)
+check("顶栏按钮带内联图标", html.count("<button") >= 4 and 'id="btnRunAll"' in html and html.count("<svg") >= 6)
+check("下拉框去掉了原生箭头（自绘 chevron）", "appearance: none" in css and "background-position: right 9px center" in css)
+check("开关是自绘滑块", ".switch input::after" in css)
+check("统计数字用等宽数字", "font-variant-numeric: tabular-nums" in css)
 
 print("=" * 66)
 print(f"通过 {len(passed)}  失败 {len(failed)}")

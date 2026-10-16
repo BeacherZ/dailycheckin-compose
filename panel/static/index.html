@@ -47,7 +47,7 @@
 <header>
   <div class="brand">
     <span class="mark" aria-hidden="true">
-      <svg viewBox="0 0 32 32" width="26" height="26"><rect width="32" height="32" rx="9" fill="currentColor"/><path d="M9 17l5 5 9-11" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <svg viewBox="0 0 32 32" width="28" height="28"><rect width="32" height="32" rx="9" fill="currentColor"/><path d="M9 17l5 5 9-11" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </span>
     <span class="brand-text">
       <b id="panelTitle">dailycheckin-plus</b>
@@ -55,19 +55,31 @@
     </span>
   </div>
 
-  <div class="stats" id="stats">
-    <span class="pill ok"><i></i>有效 <b id="statValid">0</b></span>
-    <span class="pill bad"><i></i>失效 <b id="statInvalid">0</b></span>
-    <span class="pill warn"><i></i>未判定 <b id="statUnknown">0</b></span>
-    <span class="pill"><i></i>已配置 <b id="statConfigured">0</b><em>/<span id="statTotal">0</span></em></span>
-    <span class="pill ghost" id="statLastRun">还没有运行过</span>
+  <div class="statbar" id="stats">
+    <span class="stat ok"><i></i>有效 <b id="statValid">0</b></span>
+    <span class="stat bad"><i></i>失效 <b id="statInvalid">0</b></span>
+    <span class="stat warn"><i></i>未判定 <b id="statUnknown">0</b></span>
+    <span class="stat"><i></i>已配置 <b id="statConfigured">0</b><em>/<span id="statTotal">0</span></em></span>
+    <span class="stat muted-stat" id="statLastRun">还没有运行过</span>
   </div>
 
   <div class="actions">
-    <button class="primary" id="btnRunAll">全部签到</button>
-    <button id="btnVerifyAll">校验全部</button>
-    <button class="icon-btn" id="btnDrawer" title="运行 / 日志">运行日志</button>
-    <button class="icon-btn" id="btnSettings" title="设置">设置</button>
+    <button class="primary" id="btnRunAll">
+      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M8.9 1.6 3.3 9.1h3.6l-.8 5.3L11.9 7H8.3z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+      全部签到
+    </button>
+    <button id="btnVerifyAll">
+      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M8 1.7 3 3.5v4c0 2.9 2.1 5.3 5 6.5 2.9-1.2 5-3.6 5-6.5v-4z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M5.9 8 7.4 9.5l3-3.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      校验全部
+    </button>
+    <button id="btnDrawer" title="运行 / 日志">
+      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="1.6" y="2.9" width="12.8" height="10.2" rx="2.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M4.5 6.8 6.3 8.6l-1.8 1.8M8.3 10.4h3.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      运行日志
+    </button>
+    <button id="btnSettings" title="设置">
+      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2.2 5h11.6M2.2 11h11.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="6" cy="5" r="1.9" fill="currentColor"/><circle cx="10.4" cy="11" r="1.9" fill="currentColor"/></svg>
+      设置
+    </button>
   </div>
 </header>
 
@@ -78,8 +90,14 @@
   </div>
 
   <div class="seg" id="viewSeg" role="group" aria-label="视图">
-    <button data-view="card" class="active">卡片</button>
-    <button data-view="list">列表</button>
+    <button data-view="card" class="active">
+      <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><rect x="2" y="2" width="5" height="5" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="2" width="5" height="5" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="2" y="9" width="5" height="5" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="9" width="5" height="5" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+      卡片
+    </button>
+    <button data-view="list">
+      <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M2.5 4h11M2.5 8h11M2.5 12h11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      列表
+    </button>
   </div>
 
   <select id="groupFilter" title="按分类筛选"></select>
@@ -107,7 +125,10 @@
   <label class="switch"><input type="checkbox" id="maskCookie" checked> 隐藏 cookie</label>
   <button class="ghost tiny" id="btnExpandAll">展开全部</button>
   <button class="ghost tiny" id="btnCollapseAll">收起全部</button>
-  <button class="ghost tiny" id="btnRefresh">刷新</button>
+  <button class="ghost tiny" id="btnRefresh">
+    <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M13.3 8a5.3 5.3 0 1 1-1.6-3.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M13.6 2.2v3.3h-3.3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    刷新
+  </button>
 </div>
 
 <main>

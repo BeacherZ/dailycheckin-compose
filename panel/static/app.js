@@ -49,6 +49,7 @@
     unverified: ["unverified", "未校验", "未校验"],
   };
   const SOURCE_TEXT = { api: "依据：登录态接口", run: "依据：签到运行" };
+  const CHEVRON = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M6.2 3.6 10.6 8l-4.4 4.4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   const STATE_DOT = { valid: "●", invalid: "●", unknown: "●", unverified: "○" };
 
   /* ---------------- 网络 ---------------- */
@@ -345,6 +346,9 @@
     if (src) meta.push(src);
     if (site.status && site.status.message) meta.push(truncate(site.status.message, 58));
     if (S.dirty[site.key]) meta.push("有未保存的改动");
+    // meta 在 CSS 里是固定一行 + 省略号（长度不一会把同排卡片顶得高低不齐），
+    // 所以完整文案挂到 title 上，鼠标停一下能看到被截掉的部分。
+    const metaText = meta.join(" · ");
 
     return `
 <article class="card${open ? " open" : ""}" data-state="${state}" data-key="${site.key}">
@@ -354,9 +358,9 @@
     <span class="spacer"></span>
     <span class="tag">${esc(site.group || "其它")}</span>
     ${statusBadge(site)}
-    <span class="chev ${open ? "open" : ""}">▶</span>
+    <span class="chev ${open ? "open" : ""}" aria-hidden="true">${CHEVRON}</span>
   </div>
-  <div class="card-meta">${meta.map(esc).join(" · ")}</div>
+  <div class="card-meta" title="${esc(metaText)}">${esc(metaText)}</div>
   ${open ? bodyHTML(site, accounts) : ""}
 </article>`;
   }
@@ -511,7 +515,10 @@
     const meta = [accounts.length ? `${accounts.length} 个账号` : "未配置"];
     if (S.dirty[key]) meta.push("有未保存的改动");
     const el = card.querySelector(".card-meta");
-    if (el) el.textContent = meta.join(" · ");
+    if (el) {
+      el.textContent = meta.join(" · ");
+      el.title = el.textContent;
+    }
   }
 
   function openSite(key) {
