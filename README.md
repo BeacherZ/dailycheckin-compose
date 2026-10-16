@@ -162,10 +162,6 @@ python tools/sync_upstream.py --ref 25.12.9   # 指定 tag / 分支 / commit
 **想挂到公网？**
 ① 登录后台设好账号密码（默认就要求登录，别关）；② 前面套一层 HTTPS 反向代理（Nginx / Caddy / Traefik）—— 会话票据是 Bearer 语义，明文 HTTP 有被截获的风险。反代记得转发 `X-Forwarded-Proto`，面板会据此给 cookie 加 `Secure`。
 
-**通知怎么变成两条了？改了代码没变化？**
-先看通知结尾那行 **`项目地址`**：写着 `github.com/beacherz/dailycheckin-plus` 才是本项目镜像；如果是 `github.com/Sitoi/dailycheckin`，说明你跑的**还是旧镜像**：`docker compose pull && docker compose up -d`。
-结尾确实对了却仍收多条，查两处：① `docker exec dailycheckin crontab -l` 看有没有两行签到任务（从官方镜像迁来的容器可能同时有「裸的签到行」和面板写的托管区块，去「设置 → 定时签到」随便保存一次让面板接管）；② `docker logs dailycheckin --tail 50` 对一下有没有别的脚本在发。
-
 **从官方镜像 `sitoi/dailycheckin` 迁过来要做什么？**
 先停掉旧容器 —— 本项目容器名也叫 `dailycheckin`，不清理会撞名：`docker stop dailycheckin && docker rm dailycheckin`。然后把原 `config/config.json` 复制到本项目 `config/`，`docker compose up -d` 即可。
 
