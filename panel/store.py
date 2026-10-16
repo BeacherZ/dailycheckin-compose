@@ -46,10 +46,14 @@ NOTICE_KEYS = [
     ("SENDKEY", "Server 酱³ SendKey"),
     ("QMSG_KEY", "Qmsg 钥匙"),
     ("QMSG_TYPE", "Qmsg 类型"),
-    ("MERGE_PUSH", "合并推送"),
 ]
 
 NOTICE_KEY_NAMES = [key for key, _ in NOTICE_KEYS]
+
+# 已废弃的配置项。上游那套「MERGE_PUSH 合并推送」开关不再需要了 ——
+# 通知恒定只发一条。但老配置里可能还留着 MERGE_PUSH=false，写文件时顺手清掉，
+# 免得设置页里冒出一个没人认识、也不再起作用的键。
+LEGACY_NOTICE_KEYS = ("MERGE_PUSH",)
 
 
 def empty_template() -> dict:
@@ -92,6 +96,8 @@ def write(data: dict, backup: bool = True) -> dict:
     """原子写入（先写临时文件再替换），可选保留一份时间戳备份。"""
     with _LOCK:
         paths.ensure_dirs()
+        for legacy in LEGACY_NOTICE_KEYS:
+            data.pop(legacy, None)
         if backup and os.path.exists(paths.CONFIG_PATH):
             _backup()
         tmp = paths.CONFIG_PATH + ".tmp"

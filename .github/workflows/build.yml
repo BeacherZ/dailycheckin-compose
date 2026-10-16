@@ -155,10 +155,12 @@ jobs:
           set -e
           echo "--- 同步工具自测：补丁重放、冲突报错、新站点降级"
           python3 tools/test_sync_upstream.py
+          echo "--- 通知模块自测：恒定一条、带标题、结尾是本项目地址"
+          python3 tools/test_notice.py
           echo "--- UPSTREAM.json 溯源信息"
           python3 -c "import json;s=json.load(open('UPSTREAM.json',encoding='utf-8'));print('上游',s['repo'],'@',s['ref'],s['commit'][:10],'| 引擎版本',s['version'],'| 本地补丁',len(s['patches']),'个 | 站点',len(s['engine_sites']),'个');assert s['commit'] and s['engine_sites'] and s['patches']"
           echo "--- 两个本地补丁的代码特征必须在引擎里"
-          python3 -c "import pathlib as p;b=p.Path('dailycheckin/bilibili/main.py').read_text(encoding='utf-8');m=p.Path('dailycheckin/utils/message.py').read_text(encoding='utf-8');assert 'web-interface/newlist' in b,'B 站接口补丁丢了';assert '_as_bool' in m and 'SEPARATOR' in m,'通知合并补丁丢了';print('补丁完整')"
+          python3 -c "import pathlib as p;b=p.Path('dailycheckin/bilibili/main.py').read_text(encoding='utf-8');m=p.Path('dailycheckin/utils/message.py').read_text(encoding='utf-8');n=p.Path('dailycheckin/main.py').read_text(encoding='utf-8');assert 'web-interface/newlist' in b,'B 站接口补丁丢了';assert 'render_content' in m and 'SEPARATOR' in m,'通知单条补丁丢了';assert 'merge_push' not in m,'通知模块里还留着会拆成多条的旧逻辑';assert 'PROJECT_URL' in n and 'Sitoi/dailycheckin\"' not in n,'main.py 的引擎元信息没跟上';print('补丁完整')"
 
       - name: 面板能看到引擎来源，且没有站点缺元数据
         run: |

@@ -167,13 +167,9 @@
 
     <div class="section">
       <h4>推送通知 <span class="muted">（可选。填了就把签到结果推给你）</span></h4>
-      <div class="row" style="margin:0 0 10px">
-        <label style="font-size:12px;color:var(--fg-2)">消息条数</label>
-        <select id="mergePush" style="width:auto">
-          <option value="">合并成一条（推荐，站点之间用分隔行隔开）</option>
-          <option value="false">每个站点单独一条</option>
-        </select>
-      </div>
+      <p class="muted" style="font-size:12px;margin:0 0 10px">
+        一次签到只推<b>一条</b>消息：带标题，各站点结果之间用分隔行隔开，末尾附任务信息与项目地址。
+      </p>
       <div class="kv" id="noticeFields"></div>
       <div class="row"><button class="primary" id="btnSaveNotice">保存推送设置</button></div>
       <p class="tip">Telegram / 钉钉 / 飞书 / Server 酱 等只填自己要用的那几项即可，其它留空。</p>

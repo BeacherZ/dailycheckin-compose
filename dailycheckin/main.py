@@ -8,7 +8,7 @@ import requests
 
 from dailycheckin.__version__ import __version__
 from dailycheckin.configs import checkin_map, get_checkin_info, get_notice_info
-from dailycheckin.utils.message import push_message
+from dailycheckin.utils.message import PROJECT_URL, push_message
 
 
 def parse_arguments():
@@ -109,9 +109,15 @@ def checkin():
             f"任务用时: {int(time.time() - start_time)} 秒\n"
             f"当前版本: {__version__}\n"
             f"最新版本: {latest_version}\n"
-            f"项目地址: https://github.com/Sitoi/dailycheckin"
+            f"项目地址: {PROJECT_URL}"
         )
-        push_message(content_list=content_list, notice_info=notice_info)
+        # 一次任务只推一条：站点结果 + 上面的任务元信息拼在同一条消息里，
+        # 由 message.push_message 负责加标题、插分隔行。
+        push_message(
+            content_list=content_list,
+            notice_info=notice_info,
+            title=f"每日签到 · {utc_time[:10]}",
+        )
         return
 
 

@@ -1,11 +1,188 @@
 # 上游仓库: https://github.com/Sitoi/dailycheckin
-# 适用文件: dailycheckin/utils/message.py
-# 用途    : 通知：默认合并成一条，站点之间用分隔行隔开；修正 merge_push 空字符串被当成「不合并」的坑
+# 适用文件: dailycheckin/utils/message.py, dailycheckin/main.py
+# 用途    : 通知模块改写：一次签到恒定只发一条消息（删掉上游「按渠道自动拆分 + MERGE_PUSH
+#           开关」那套逻辑，避免配置留白时误判成多条）；消息带标题；各站点结果用分隔行
+#           隔开；结尾「项目地址」与企业微信卡片回跳地址都指向本项目而不是上游；
+#           顺带给 important_notice 补上 timeout。
 # 应用方式: git apply -p1 < patches/0002-notice-single-message.patch   （本项目由 tools/sync_upstream.py 自动重放）
 
+diff --git a/dailycheckin/main.py b/dailycheckin/main.py
+index 9006cb9..3469834 100644
+--- a/dailycheckin/main.py
++++ b/dailycheckin/main.py
+@@ -8,7 +8,7 @@ import requests
+ 
+ from dailycheckin.__version__ import __version__
+ from dailycheckin.configs import checkin_map, get_checkin_info, get_notice_info
+-from dailycheckin.utils.message import push_message
++from dailycheckin.utils.message import PROJECT_URL, push_message
+ 
+ 
+ def parse_arguments():
+@@ -109,9 +109,15 @@ def checkin():
+             f"任务用时: {int(time.time() - start_time)} 秒\n"
+             f"当前版本: {__version__}\n"
+             f"最新版本: {latest_version}\n"
+-            f"项目地址: https://github.com/Sitoi/dailycheckin"
++            f"项目地址: {PROJECT_URL}"
++        )
++        # 一次任务只推一条：站点结果 + 上面的任务元信息拼在同一条消息里，
++        # 由 message.push_message 负责加标题、插分隔行。
++        push_message(
++            content_list=content_list,
++            notice_info=notice_info,
++            title=f"每日签到 · {utc_time[:10]}",
+         )
+-        push_message(content_list=content_list, notice_info=notice_info)
+         return
+ 
+ 
+diff --git a/dailycheckin/utils/message.py b/dailycheckin/utils/message.py
+index 3d137d5..c81e5c9 100644
 --- a/dailycheckin/utils/message.py
 +++ b/dailycheckin/utils/message.py
-@@ -222,7 +222,10 @@
+@@ -8,15 +8,42 @@ from urllib.parse import quote_plus
+ 
+ import requests
+ 
++# 本项目（fork）自己的标识。通知标题、企业微信卡片里回跳的地址都取自这里，
++# 不再像上游那样在好几处分别写死同一个链接。
++PROJECT_NAME = "dailycheckin-compose"
++PROJECT_URL = "https://github.com/beacherz/dailycheckin-compose"
+ 
+-def message2server(sckey, content):
++# 各站点签到结果之间的分隔行。用全角破折号：所有推送渠道都能正常显示，
++# 不会被当成 markdown 语法，也不会像方块字符那样在不同字体下变成乱码。
++SEPARATOR = "\n" + "—" * 22 + "\n"
++
++# 渠道自带标题能力（server 酱 / PushPlus / Gotify / ntfy / 企业微信）时的兜底标题。
++# 正常情况下由 main.py 传进来一个带日期的标题。
++NOTICE_TITLE = "每日签到"
++
++
++def render_content(blocks: list, title: str = "") -> str:
++    """把各站点结果渲染成**一条**消息正文（纯字符串处理，便于单测）。
++
++    - 标题单独一行，与正文之间空一行
++    - 站点之间用分隔行 SEPARATOR 隔开
++    - 空区块直接丢掉，不会产生空行
++    """
++    parts = [str(one).strip() for one in blocks if str(one or "").strip()]
++    body = SEPARATOR.join(parts)
++    if not title:
++        return body
++    return f"【{title}】\n\n{body}" if body else f"【{title}】"
++
++
++def message2server(sckey, content, title=NOTICE_TITLE):
+     print("server 酱推送开始")
+-    data = {"text": "每日签到", "desp": content.replace("\n", "\n\n")}
++    data = {"text": title, "desp": content.replace("\n", "\n\n")}
+     requests.post(url=f"https://sc.ftqq.com/{sckey}.send", data=data)
+ 
+ 
+-def message2server_turbo(sendkey, content):
+-    data = {"text": "每日签到", "desp": content.replace("\n", "\n\n")}
++def message2server_turbo(sendkey, content, title=NOTICE_TITLE):
++    data = {"text": title, "desp": content.replace("\n", "\n\n")}
+     if match := re.match(r"^sctp(\d+)t", sendkey):
+         sc3uid = match.group(1)
+         print("Server 酱³ 推送开始")
+@@ -122,6 +149,7 @@ def message2qywxapp(
+     qywx_media_id,
+     qywx_origin,
+     content,
++    title=NOTICE_TITLE,
+ ):
+     print("企业微信应用消息推送开始")
+     base_url = "https://qyapi.weixin.qq.com"
+@@ -137,10 +165,10 @@ def message2qywxapp(
+             "mpnews": {
+                 "articles": [
+                     {
+-                        "title": "Dailycheckin 签到通知",
++                        "title": title,
+                         "thumb_media_id": qywx_media_id,
+-                        "author": "Sitoi",
+-                        "content_source_url": "https://github.com/Sitoi/dailycheckin",
++                        "author": PROJECT_NAME,
++                        "content_source_url": PROJECT_URL,
+                         "content": content.replace("\n", "<br>"),
+                         "digest": content,
+                     }
+@@ -153,9 +181,9 @@ def message2qywxapp(
+             "agentid": int(qywx_agentid),
+             "msgtype": "textcard",
+             "textcard": {
+-                "title": "Dailycheckin 签到通知",
++                "title": title,
+                 "description": content,
+-                "url": "https://github.com/Sitoi/dailycheckin",
++                "url": PROJECT_URL,
+                 "btntxt": "开源项目",
+             },
+         }
+@@ -165,11 +193,11 @@ def message2qywxapp(
+     )
+ 
+ 
+-def message2pushplus(pushplus_token, content, pushplus_topic=None):
++def message2pushplus(pushplus_token, content, pushplus_topic=None, title=NOTICE_TITLE):
+     print("Pushplus 推送开始")
+     data = {
+         "token": pushplus_token,
+-        "title": "签到通知",
++        "title": title,
+         "content": content.replace("\n", "<br>"),
+         "template": "json",
+     }
+@@ -178,13 +206,19 @@ def message2pushplus(pushplus_token, content, pushplus_topic=None):
+     requests.post(url="http://www.pushplus.plus/send", data=json.dumps(data))
+ 
+ 
+-def message2gotify(gotify_url: str, gotify_token: str, gotify_priority: str, content: str) -> None:
++def message2gotify(
++    gotify_url: str,
++    gotify_token: str,
++    gotify_priority: str,
++    content: str,
++    title: str = NOTICE_TITLE,
++) -> None:
+     print("Gotify 服务启动")
+     if not gotify_priority:
+         gotify_priority = "3"
+     url = f"{gotify_url}/message?token={gotify_token}"
+     data = {
+-        "title": "Dailycheckin签到通知",
++        "title": title,
+         "message": content,
+         "priority": gotify_priority,
+     }
+@@ -196,7 +230,13 @@ def message2gotify(gotify_url: str, gotify_token: str, gotify_priority: str, con
+         print("Gotify 推送失败！")
+ 
+ 
+-def message2ntfy(ntfy_url: str, ntfy_topic: str, ntfy_priority: str, content: str) -> None:
++def message2ntfy(
++    ntfy_url: str,
++    ntfy_topic: str,
++    ntfy_priority: str,
++    content: str,
++    title: str = NOTICE_TITLE,
++) -> None:
+     def encode_rfc2047(text: str) -> str:
+         """将文本编码为符合 RFC 2047 标准的格式"""
+         encoded_bytes = base64.b64encode(text.encode("utf-8"))
+@@ -209,7 +249,7 @@ def message2ntfy(ntfy_url: str, ntfy_topic: str, ntfy_priority: str, content: st
+     if not ntfy_priority:
+         ntfy_priority = "3"
+     # 使用 RFC 2047 编码 title
+-    encoded_title = encode_rfc2047("Dailycheckin签到通知")
++    encoded_title = encode_rfc2047(title)
+ 
+     data = content.encode(encoding="utf-8")
+     headers = {"Title": encoded_title, "Priority": ntfy_priority}  # 使用编码后的 title
+@@ -222,7 +262,10 @@ def message2ntfy(ntfy_url: str, ntfy_topic: str, ntfy_priority: str, content: st
  
  
  def important_notice():
@@ -17,34 +194,16 @@
      if datas:
          data = datas[0]
          title = data.get("title")
-@@ -232,6 +235,26 @@
-     else:
-         notice = None
+@@ -234,7 +277,7 @@ def important_notice():
      return notice
-+
-+
-+# 各站点签到结果之间的分隔行。用全角破折号：所有推送渠道都能正常显示，
-+# 不会被当成 markdown 语法，也不会像方块字符那样在不同字体下变成乱码。
-+SEPARATOR = "\n" + "—" * 22 + "\n"
-+
-+
-+def _as_bool(value, default: bool) -> bool:
-+    """把配置里的真假值解析成 bool。
-+
-+    config.json 里 `MERGE_PUSH` 常常是空字符串（面板生成的空模板就是 ""），
-+    而 `"" is None` 为假 —— 原来的 `if merge_push is None` 判断会因此走进
-+    「不合并」分支，把一条通知拆成好几条发出去。这里统一把空值当默认值。
-+    """
-+    if value is None:
-+        return default
-+    text = str(value).strip().lower()
-+    if text == "":
-+        return default
-+    return text not in ("0", "false", "no", "off", "none", "null")
  
  
- def push_message(content_list: list, notice_info: dict):
-@@ -266,33 +289,19 @@
+-def push_message(content_list: list, notice_info: dict):
++def push_message(content_list: list, notice_info: dict, title: str = NOTICE_TITLE):
+     dingtalk_secret = notice_info.get("dingtalk_secret")
+     dingtalk_access_token = notice_info.get("dingtalk_access_token")
+     fskey = notice_info.get("fskey")
+@@ -266,33 +309,22 @@ def push_message(content_list: list, notice_info: dict):
      ntfy_url = notice_info.get("ntfy_url")
      ntfy_topic = notice_info.get("ntfy_topic")
      ntfy_priority = notice_info.get("ntfy_priority")
@@ -79,10 +238,60 @@
 -    if not merge_push:
 -        message_list = content_list
 +
-+    content_str = SEPARATOR.join(blocks)
-+    # 默认合并成一条：站点之间用分隔行隔开，比一次甩出七八条消息好读得多。
-+    merge_push = _as_bool(notice_info.get("merge_push"), True)
-+    message_list = [content_str] if merge_push else blocks
++    # 一次任务**只发一条**：所有站点结果拼在一条消息里，中间用分隔行隔开。
++    # 上游那套「按渠道自动拆成多条 + MERGE_PUSH 开关」已经删掉——它既容易在
++    # 配置留白时误判，也会让同一批结果散成好几条，读起来反而更累。
++    # 这里保留「列表 + 循环」只是为了将来真要拆分时只改这一行，
++    # 不必把下面上百行的推送代码整体重新缩进。
++    content_str = render_content(blocks, title=title)
++    message_list = [content_str]
      for message in message_list:
          if qmsg_key:
              try:
+@@ -320,6 +352,7 @@ def push_message(content_list: list, notice_info: dict):
+                     qywx_media_id=qywx_media_id,
+                     qywx_origin=qywx_origin,
+                     content=message,
++                    title=title,
+                 )
+             except Exception as e:
+                 print("企业微信应用消息推送失败", e)
+@@ -344,12 +377,12 @@ def push_message(content_list: list, notice_info: dict):
+                 print("飞书推送失败", e)
+         if sckey:
+             try:
+-                message2server(sckey=sckey, content=message)
++                message2server(sckey=sckey, content=message, title=title)
+             except Exception as e:
+                 print("Server 推送失败", e)
+         if sendkey:
+             try:
+-                message2server_turbo(sendkey=sendkey, content=message)
++                message2server_turbo(sendkey=sendkey, content=message, title=title)
+             except Exception as e:
+                 print("Server Turbo 推送失败", e)
+         if qywx_key:
+@@ -363,6 +396,7 @@ def push_message(content_list: list, notice_info: dict):
+                     pushplus_token=pushplus_token,
+                     content=message,
+                     pushplus_topic=pushplus_topic,
++                    title=title,
+                 )
+             except Exception as e:
+                 print("Pushplus 推送失败", e)
+@@ -384,6 +418,7 @@ def push_message(content_list: list, notice_info: dict):
+                     gotify_token=gotify_token,
+                     gotify_priority=gotify_priority,
+                     content=message,
++                    title=title,
+                 )
+             except Exception as e:
+                 print("Gotify 推送失败", e)
+@@ -394,6 +429,7 @@ def push_message(content_list: list, notice_info: dict):
+                     ntfy_topic=ntfy_topic,
+                     ntfy_priority=ntfy_priority,
+                     content=message,
++                    title=title,
+                 )
+             except Exception as e:
+                 print("Ntfy 推送失败", e)

@@ -739,10 +739,7 @@
     $("accOld").value = $("accNew").value = $("accNew2").value = "";
     $("accTip").textContent = S.auth && S.auth.auth_path ? `凭据存放：${S.auth.auth_path}` : "";
 
-    const mergeVal = st.notice.MERGE_PUSH || "";
-    $("mergePush").value = String(mergeVal).toLowerCase() === "false" ? "false" : "";
     $("noticeFields").innerHTML = st.notice_keys
-      .filter((k) => k.key !== "MERGE_PUSH")
       .map((k) => `<div><label>${esc(k.label)} <span class="opt">${esc(k.key)}</span></label>
         <input type="text" data-notice="${esc(k.key)}" value="${esc(st.notice[k.key] || "")}" autocomplete="off"></div>`)
       .join("");
@@ -875,7 +872,6 @@
     $("btnSaveNotice").onclick = async () => {
       const notice = {};
       document.querySelectorAll("[data-notice]").forEach((el) => (notice[el.dataset.notice] = el.value.trim()));
-      notice.MERGE_PUSH = $("mergePush").value;
       try {
         await api("/notice", { method: "POST", body: { notice } });
         toast("推送设置已保存");
