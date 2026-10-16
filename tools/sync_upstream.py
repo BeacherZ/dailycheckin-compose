@@ -339,6 +339,14 @@ def engine_version(engine_dir: str) -> str:
         return "?"
 
 
+def _same_except_time(old: dict, new: dict) -> bool:
+    """除 synced_at 外，两份溯源信息是否一致。"""
+    if not old:
+        return False
+    drop = lambda d: {k: v for k, v in d.items() if k != "synced_at"}  # noqa: E731
+    return drop(old) == drop(new)
+
+
 # --------------------------------------------------------------------------- #
 # 报告
 # --------------------------------------------------------------------------- #
@@ -497,19 +505,26 @@ def do_sync(args) -> int:
 
         step("写入 UPSTREAM.json")
         patches = sorted(n for n in os.listdir(PATCH_DIR) if n.endswith(".patch")) if os.path.isdir(PATCH_DIR) else []
+        synced_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         new_state = {
             "repo": repo,
             "ref": ref,
             "commit": sha,
             "commit_date": commit_date,
             "version": new_version,
-            "synced_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "synced_at": synced_at,
             "sync_tool": "tools/sync_upstream.py",
             "patches": patches,
             "engine_sites": sorted(new_sites),
             "tracked_files": file_info,
             "note": "引擎源码来自上游，patches/ 里的补丁在同步后自动重放。不要手工覆盖 dailycheckin/。",
         }
+        # 上游没动、补丁也没变的时候，只刷新 synced_at 会白造一次提交
+        # （CI 是靠 git diff 判断「有没有变化」的），所以这里沿用上一次的时间戳。
+        old_state = read_state()
+        if _same_except_time(old_state, new_state):
+            new_state["synced_at"] = old_state.get("synced_at") or synced_at
+            log("   上游内容与上次同步一致，保留原有的同步时间戳")
         write_state(new_state)
         log("   已写入 %s" % os.path.relpath(STATE_PATH, ROOT).replace("\\", "/"))
 

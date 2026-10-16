@@ -212,6 +212,15 @@ def main() -> int:
     check("已收录站点不受影响", merged["BILIBILI"]["known"] is True and merged["BILIBILI"]["verify"] == "bilibili")
     check("按引擎现状没有缺口", catalog.missing_meta() == [], str(catalog.missing_meta()))
 
+    print("\n== 8) 重复同步不该产生无意义的变化 ==")
+    now = S.read_state()
+    check("只差时间戳视为无变化（避免白造提交）",
+          S._same_except_time(now, dict(now, synced_at="2099-01-01T00:00:00Z")))
+    check("上游提交变了就是有变化", not S._same_except_time(now, dict(now, commit="0" * 40)))
+    check("补丁清单变了就是有变化", not S._same_except_time(now, dict(now, patches=[])))
+    check("站点清单变了就是有变化", not S._same_except_time(now, dict(now, engine_sites=["X"])))
+    check("首次同步（没有旧记录）必须写入", not S._same_except_time({}, now))
+
     print("\n" + "=" * 52)
     print("通过 %d 项，失败 %d 项" % (PASS, FAIL))
     return 1 if FAIL else 0
