@@ -17,7 +17,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from . import auth, catalog, cookies as ck, paths, runner, schedule, store, upstream, verify
 
-PANEL_VERSION = "2.0.0"
+PANEL_VERSION = "2.1.0"
 MAX_BODY = 4 * 1024 * 1024
 
 # 不需要登录就能访问的接口：健康检查（给容器 healthcheck 用）与登录/首次设置本身
@@ -445,7 +445,7 @@ HANDLERS = {}
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "dailycheckin-panel/" + PANEL_VERSION
+    server_version = "dailycheckin-plus-panel/" + PANEL_VERSION
     protocol_version = "HTTP/1.1"
 
     # ----- 基础 -----
@@ -601,7 +601,7 @@ def serve() -> None:
     httpd = ThreadingHTTPServer((paths.HOST, paths.PORT), Handler)
     httpd.daemon_threads = True
     shown = "127.0.0.1" if paths.HOST == "0.0.0.0" else paths.HOST
-    print(f"签到管理面板已启动：http://{shown}:{paths.PORT}", flush=True)
+    print(f"{paths.TITLE} 已启动：http://{shown}:{paths.PORT}", flush=True)
     print(f"  工作目录   : {paths.HOME}")
     print(f"  配置文件   : {paths.CONFIG_PATH}")
     if note:

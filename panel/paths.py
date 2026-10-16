@@ -34,7 +34,8 @@ HOST = _env("PANEL_HOST", "0.0.0.0")
 PORT = int(_env("PANEL_PORT", "8080"))
 # 可选：给脚本 / 自动化用的静态口令。留空就只走「账号密码登录」，这是默认。
 TOKEN = _env("PANEL_TOKEN", "")
-TITLE = _env("PANEL_TITLE", "签到管理面板")
+# 页面标题（浏览器标签 + 顶栏品牌名）。想换成自己的叫法就设 PANEL_TITLE。
+TITLE = _env("PANEL_TITLE", "dailycheckin-plus")
 TZ = _env("TZ", "Asia/Shanghai")
 
 MAX_BACKUPS = 30

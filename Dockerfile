@@ -1,4 +1,4 @@
-# 自定义镜像：签到引擎 + 网页管理面板
+# 自定义镜像：dailycheckin-plus —— 签到引擎 + 网页管理面板
 # 引擎来自 https://github.com/Sitoi/dailycheckin（MIT），本项目在其之上加了管理后台
 FROM python:3.9-slim
 
@@ -33,13 +33,21 @@ RUN set -eux; \
     grep -q 'web-interface/newlist' "$(python -c 'import dailycheckin.bilibili.main as m; print(m.__file__)')"; \
     echo 'B 站接口修复已生效'; \
     grep -q 'PROJECT_URL' "$(python -c 'import dailycheckin.main as m; print(m.__file__)')"; \
-    grep -q 'beacherz/dailycheckin-compose' "$(python -c 'import dailycheckin.utils.message as m; print(m.__file__)')"; \
-    echo '通知模块修复已生效（恒定一条 + 标题 + 本项目地址）'; \
+    grep -q 'beacherz/dailycheckin-plus' "$(python -c 'import dailycheckin.utils.message as m; print(m.__file__)')"; \
+    grep -q 'dailycheckin-plus 每日签到' "$(python -c 'import dailycheckin.utils.message as m; print(m.__file__)')"; \
+    echo '通知模块修复已生效（恒定一条 + 标题带项目名 + 本项目地址）'; \
     cd / && rm -rf /build
 
 # ---------- 2) 放入网页管理面板（纯标准库实现，不需要安装）----------
 WORKDIR ${DC_HOME}
 COPY panel ./panel
+# 网页里的品牌字样也断言一次：装进镜像的必须是改名后的版本，
+# 别出现「源码改了名字、镜像里还是老页面」这种事。
+RUN set -eux; \
+    grep -q 'dailycheckin-plus' panel/static/index.html; \
+    grep -q 'dailycheckin-plus' panel/paths.py; \
+    echo '面板品牌自检通过'
+
 # 溯源信息：面板「设置 → 环境信息」里显示的引擎版本/上游提交就来自这里，
 # 由 tools/sync_upstream.py 在同步上游时生成。
 COPY UPSTREAM.json ./UPSTREAM.json

@@ -3,7 +3,7 @@
 services:
   dailycheckin:
     build: .
-    image: dailycheckin-compose:latest
+    image: dailycheckin-plus:latest
     container_name: dailycheckin
     restart: unless-stopped
     ports:

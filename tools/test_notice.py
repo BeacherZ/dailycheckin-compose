@@ -57,7 +57,7 @@ def check(name, cond, detail=""):
 # --------------------------------------------------------------------------- #
 # 与 dailycheckin/main.py 里 content_list 的构造方式保持一致
 # --------------------------------------------------------------------------- #
-TITLE = "每日签到 · 2026-10-16"
+TITLE = f"{message.PROJECT_NAME} 每日签到 · 2026-10-16"
 CONTENT = [
     "「V2EX 论坛」\n帐号信息: BZGOGO\n今日签到: 20261016 的每日登录奖励 13 铜币\n帐号余额: 38259.34",
     "「哔哩哔哩」\n第 1 个账号: ✅✅✅✅✅",
@@ -92,6 +92,14 @@ check("三个区块都在", all(k in body for k in ("V2EX 论坛", "哔哩哔哩
 # 2) 结尾的项目地址指向本项目，而不是上游
 check("项目地址指向本项目", message.PROJECT_URL in body, message.PROJECT_URL)
 check("正文里不再出现上游仓库地址", "Sitoi/dailycheckin" not in body, body[-120:])
+
+# 2.1) 项目名：常量、通知标题、企业微信卡片署名都得是新名字
+check("PROJECT_NAME 是 dailycheckin-plus", message.PROJECT_NAME == "dailycheckin-plus", message.PROJECT_NAME)
+check("项目地址是新仓库", message.PROJECT_URL.endswith("/dailycheckin-plus"), message.PROJECT_URL)
+check("兜底标题带项目名", message.NOTICE_TITLE == "dailycheckin-plus 每日签到", message.NOTICE_TITLE)
+check("标题里有项目名", message.PROJECT_NAME in TITLE, TITLE)
+check("正文首行的标题带项目名", body.startswith(f"【{message.PROJECT_NAME}"), repr(body[:60]))
+check("通知里不再出现旧项目名", "dailycheckin-compose" not in body, body[:120])
 
 # 3) 老配置里的 MERGE_PUSH=false 也必须被忽略 —— 它正是「还是两条」的元凶之一
 for legacy in ("false", "0", "no", ""):
@@ -134,11 +142,13 @@ message.push_message(
 )
 qywx = [c for c in CALLS if "qyapi.weixin.qq.com" in str(c.get("url"))]
 check("企业微信卡片回跳本项目", qywx and message.PROJECT_URL in str(qywx[-1].get("data")), str(qywx[-1].get("data"))[:120] if qywx else "没有调用")
+check("企业微信卡片署名也是新项目名", qywx and message.PROJECT_NAME in str(qywx[-1].get("data")), str(qywx[-1].get("data"))[:120] if qywx else "没有调用")
 
 # 8) main.py 里的元信息块必须用同一个常量，别再写死上游地址
 main_src = open(MAIN, encoding="utf-8").read()
 check("main.py 结尾用 PROJECT_URL", "项目地址: {PROJECT_URL}" in main_src, main_src[-300:])
 check("main.py 不再硬编码上游地址", "Sitoi/dailycheckin\"" not in main_src, "main.py 里还有写死的上游链接")
+check("main.py 的标题拼上了项目名", 'title=f"{PROJECT_NAME} 每日签到' in main_src, main_src[-400:])
 
 print("=" * 66)
 print(f"通过 {len(passed)}  失败 {len(failed)}")

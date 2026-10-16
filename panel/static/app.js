@@ -1,4 +1,4 @@
-/* 签到管理面板 —— 无框架、无构建步骤的纯前端 */
+/* dailycheckin-plus 签到管理面板 —— 无框架、无构建步骤的纯前端 */
 (() => {
   "use strict";
 
@@ -252,7 +252,34 @@
     $("statTotal").textContent = currentSites().length;
     const last = (S.state.runs || [])[0];
     $("statLastRun").textContent = last ? `上次任务 ${ago(last.started_at)}` : "还没有运行过";
+    paintBrand();
     document.body.classList.toggle("masked", $("maskCookie").checked);
+  }
+
+  /* 顶栏品牌 + 版本 + 引擎状态。标题取自后端（可用 PANEL_TITLE 改），
+     浏览器标签页标题也跟着走，不然永远是 index.html 里写死的那份。 */
+  function paintBrand() {
+    if (!S.state) return;
+    const panel = S.state.panel || {};
+    const engine = S.state.engine || {};
+    const name = panel.title || "dailycheckin-plus";
+    $("panelTitle").textContent = name;
+    document.title = `${name} · 签到管理面板`;
+    $("panelVersion").textContent = panel.version || "";
+
+    const dot = $("engineDot");
+    const text = $("engineText");
+    if (engine.ok === true) {
+      dot.className = "dot";
+      text.textContent = `引擎正常 · ${engine.message || ""}`;
+    } else if (engine.ok === false) {
+      dot.className = "dot off";
+      text.textContent = "引擎异常";
+    } else {
+      dot.className = "dot idle";
+      text.textContent = "引擎探测中";
+    }
+    text.title = engine.message || "";
   }
 
   const statusBadge = (site) => {

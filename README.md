@@ -1,9 +1,9 @@
-# dailycheckin-compose
+# dailycheckin-plus
 
-**给 [Sitoi/dailycheckin](https://github.com/Sitoi/dailycheckin) 加了一个网页管理后台。一条 `docker compose up -d`，浏览器里点几下就配好了。**
+**给 [Sitoi/dailycheckin](https://github.com/Sitoi/dailycheckin) 加了一个网页管理后台。一条 `docker compose up -d` 或一条 `docker run`，浏览器里点几下就配好了。**
 
-[![build](https://github.com/BeacherZ/dailycheckin-compose/actions/workflows/build.yml/badge.svg)](https://github.com/BeacherZ/dailycheckin-compose/actions/workflows/build.yml)
-[![ghcr](https://img.shields.io/badge/ghcr.io-dailycheckin--compose-2496ed?logo=docker&logoColor=white)](https://github.com/BeacherZ/dailycheckin-compose/pkgs/container/dailycheckin-compose)
+[![build](https://github.com/BeacherZ/dailycheckin-plus/actions/workflows/build.yml/badge.svg)](https://github.com/BeacherZ/dailycheckin-plus/actions/workflows/build.yml)
+[![ghcr](https://img.shields.io/badge/ghcr.io-dailycheckin--plus-2496ed?logo=docker&logoColor=white)](https://github.com/BeacherZ/dailycheckin-plus/pkgs/container/dailycheckin-plus)
 ![license](https://img.shields.io/badge/license-MIT-green)
 
 签到引擎沿用上游原项目（MIT，已内置 B 站接口修复），**网页后台是本项目新增的**。
@@ -30,6 +30,7 @@
 **网页后台**
 
 - 🔐 **首次打开引导设置账号密码**，之后需登录；设置页可随时改账号密码、退出登录
+- 🪧 **顶栏显示项目名、面板版本与引擎状态**，页面标题可用 `PANEL_TITLE` 换成自己的叫法
 - 🧩 **16 个签到站点**，卡片 / 列表两种视图，带官网 LOGO，支持搜索、分类筛选、只看待配置
 - 🍪 **粘贴即用**：浏览器复制、JSON 导出、DevTools 表格、curl 命令 —— 全都能识别并规范化
 - ✅ **cookie 有效性判定**：本地格式体检 → 在线登录态校验 → 真实运行校验，三级递进
@@ -51,12 +52,16 @@
 
 ## 快速开始
 
+两种装法任选一种，效果完全一样：**docker compose**（推荐，以后改端口、加变量方便）或 **docker run**（不想建文件，一条命令跑起来）。
+
+### 方式一：docker compose（推荐）
+
 在任意目录新建 `docker-compose.yml`：
 
 ```yaml
 services:
   dailycheckin:
-    image: ghcr.io/beacherz/dailycheckin-compose:latest
+    image: ghcr.io/beacherz/dailycheckin-plus:latest
     container_name: dailycheckin
     restart: unless-stopped
     ports:
@@ -76,14 +81,44 @@ services:
 docker compose up -d
 ```
 
+### 方式二：docker run
+
+```bash
+docker run -d \
+  --name dailycheckin \
+  --restart unless-stopped \
+  -p 8080:8080 \
+  -e TZ=Asia/Shanghai \
+  -v "$PWD/config:/dailycheckin/config" \
+  -v "$PWD/cron:/dailycheckin/cron" \
+  -v "$PWD/logs:/dailycheckin/logs" \
+  -v "$PWD/data:/dailycheckin/data" \
+  ghcr.io/beacherz/dailycheckin-plus:latest
+```
+
+> **Windows（PowerShell / CMD）**：`$PWD` 换成 `${PWD}`，整行建议写成一行；
+> 也可以把 `"$PWD/config:/dailycheckin/config"` 换成绝对路径，例如
+> `D:/dailycheckin/config:/dailycheckin/config`。
+> 想改端口就改 `-p` 左边那个数字（例如 `-p 9000:8080`）。
+
+用 docker run 安装的话，以后升级是「拉新镜像 + 删旧容器 + 重新 run」：
+
+```bash
+docker pull ghcr.io/beacherz/dailycheckin-plus:latest
+docker rm -f dailycheckin
+# 再执行一遍上面那条 docker run（四个 -v 目录不变，数据都在）
+```
+
+### 打开后台
+
 浏览器打开 **`http://你的地址:8080`** —— 第一次会引导你设置后台账号密码，设完就进后台了。
 
-> **群晖 / 威联通**：把上面的 compose 内容贴进 Container Manager（群晖）或 Container Station 的「项目 / 应用程序」即可。
+> **群晖 / 威联通**：compose 方式把上面的内容贴进 Container Manager（群晖）或 Container Station 的「项目 / 应用程序」；docker run 方式在「映像 → 新增容器」里照着填端口和四个目录映射即可。
 > **想改端口**：把 `8080:8080` 左边那个数字改掉，例如 `9000:8080`。
 
 ### 数据放在哪
 
-上面 `volumes` 的四个目录会出现在 compose 文件同级：
+compose 方式下这四个目录会出现在 compose 文件同级；docker run 方式下就是你在 `-v` 里指定的那几个路径（上面例子是当前目录）：
 
 | 目录 | 内容 |
 |---|---|
@@ -175,19 +210,21 @@ docker compose up -d
 面板只动自己那段带标记的区块，你其它定时任务不受影响：
 
 ```cron
-# >>> dailycheckin-compose managed >>>
+# >>> dailycheckin-plus managed >>>
 0 9 * * * cd /dailycheckin && dailycheckin >> /dailycheckin/logs/dailycheckin.log 2>&1
-# <<< dailycheckin-compose managed <<<
+# <<< dailycheckin-plus managed <<<
 ```
+
+> 从旧名字（`dailycheckin-compose`）升级过来的部署，crontab 里还是老标记，面板**认得出**，保存时会就地升级成新标记。如果 crontab 里有一行「裸的」签到任务（从官方镜像迁过来、或以前手写的），面板在第一次保存时会把它**整行注释掉并留档**再接管 —— 不然它会和新写入的任务并存，一天跑两遍、通知收两条。
 
 ### 7️⃣ 推送通知
 
 「设置 → 推送通知」，渠道沿用上游全部支持：PushPlus、企业微信、Telegram、Bark、钉钉、飞书、Gotify、ntfy、Server 酱、Qmsg。只填自己要用的那几项，其它留空。
 
-没有「消息条数」这类开关：**一次签到就是一条消息**。顶部带标题，各站点结果之间用分隔行隔开，末尾补上任务元信息与项目地址：
+没有「消息条数」这类开关：**一次签到就是一条消息**。顶部带标题（**标题里就有项目名**），各站点结果之间用分隔行隔开，末尾补上任务元信息与项目地址：
 
 ```text
-【每日签到 · 2026-10-16】
+【dailycheckin-plus 每日签到 · 2026-10-16】
 
 「V2EX 论坛」
 帐号信息: BZGOGO
@@ -205,7 +242,7 @@ docker compose up -d
 任务用时: 1 秒
 当前版本: 25.12.9
 最新版本: 25.12.9
-项目地址: https://github.com/beacherz/dailycheckin-compose
+项目地址: https://github.com/beacherz/dailycheckin-plus
 ```
 
 > **为什么不是多条？** 上游引擎在检测到「有渠道需要拆分」时会按站点各发一条，`MERGE_PUSH` 留空还会误判。本项目把这段逻辑整个删掉了 —— 见 `patches/0002-notice-single-message.patch`，同步上游时会自动重放。自带标题的渠道（server 酱、PushPlus、Gotify、ntfy、企业微信）会**同时**把标题用在渠道标题栏上。
@@ -266,7 +303,7 @@ docker compose up -d
 |---|---|---|
 | `TZ` | `Asia/Shanghai` | 时区，影响定时任务时间 |
 | `PANEL_PORT` | `8080` | 容器内监听端口（改这个要同步改 compose 映射） |
-| `PANEL_TITLE` | `签到管理面板` | 页面标题 |
+| `PANEL_TITLE` | `dailycheckin-plus` | 页面标题：浏览器标签 + 后台顶栏的品牌名，可以改成你喜欢的叫法 |
 | `PANEL_USERNAME` | 空 | 想跳过「首次打开手动设置」时，配合下一项直接建号 |
 | `PANEL_PASSWORD` | 空 | 同上，只在后台还没初始化时生效 |
 | `PANEL_TOKEN` | 空 | **可选**的脚本口令，给 curl / 自动化用；认证走 `X-Panel-Token` 头或 `?token=`，**不能替代登录**，也不建议开在公网 |
@@ -280,8 +317,8 @@ docker compose up -d
 不想用现成镜像、或者改了引擎源码，用仓库里的 `docker-compose.build.yml`：
 
 ```bash
-git clone https://github.com/BeacherZ/dailycheckin-compose.git
-cd dailycheckin-compose
+git clone https://github.com/BeacherZ/dailycheckin-plus.git
+cd dailycheckin-plus
 docker compose -f docker-compose.build.yml up -d --build
 ```
 
@@ -340,7 +377,9 @@ git add -A && git commit -m "chore: 同步上游引擎" && git push
 任何时候都能自测这套补丁/同步机制是否还好使（离线，不需要网络）：
 
 ```bash
-python tools/test_sync_upstream.py
+python tools/test_sync_upstream.py    # 补丁重放 / 冲突回滚 / 新站点降级
+python tools/test_notice.py           # 通知恒定一条、标题带项目名、结尾指向本项目
+python tools/test_schedule.py         # crontab 托管区块：老标记兼容，不会变成两段任务
 ```
 
 ---
@@ -356,9 +395,11 @@ python tools/test_sync_upstream.py
 ├── patches/                    # 相对上游的本地补丁（同步时自动重放）
 │   ├── 0001-bilibili-newlist.patch
 │   └── 0002-notice-single-message.patch
-├── tools/                      # 引擎同步工具（纯标准库，不参与镜像构建）
+├── tools/                      # 离线工具与自测（纯标准库，不参与镜像构建）
 │   ├── sync_upstream.py        # --check 查更新 / --ref 同步并重放补丁
-│   └── test_sync_upstream.py   # 补丁重放、冲突回滚、新站点降级的离线自测
+│   ├── test_sync_upstream.py   # 补丁重放、冲突回滚、新站点降级的离线自测
+│   ├── test_notice.py          # 通知模块自测：恒定一条、标题带项目名、结尾指向本项目
+│   └── test_schedule.py        # crontab 托管区块自测：老项目名标记兼容、不会变成两段任务
 ├── panel/                      # 网页管理后台（纯标准库，零额外依赖）
 │   ├── server.py               # HTTP 服务、路由、鉴权
 │   ├── auth.py                 # 后台账号密码与会话票据
@@ -408,13 +449,29 @@ docker stop dailycheckin && docker rm dailycheckin
 一条命令：`python tools/sync_upstream.py`（它会自动重放 `patches/` 里的本地补丁，冲突就整体回滚），然后在 Actions 里点一下 **sync upstream** 也行。**别手工覆盖 `dailycheckin/`**，那样会丢掉本地修复。详见上面的「跟随上游更新」。
 
 **Q：通知怎么变成两条了？我改了代码但没变化？**
-先看通知结尾那行 **`项目地址`**：写着 `github.com/beacherz/dailycheckin-compose` 才是本项目镜像；如果写的是 `github.com/Sitoi/dailycheckin`，说明**你跑的还是旧镜像** —— 本项目是从镜像里装引擎的，改了源码不 `pull` 不会生效：
+先看通知结尾那行 **`项目地址`**：写着 `github.com/beacherz/dailycheckin-plus` 才是本项目镜像；如果写的是 `github.com/Sitoi/dailycheckin`，说明**你跑的还是旧镜像** —— 本项目是从镜像里装引擎的，改了源码不 `pull` 不会生效：
 
 ```bash
 docker compose pull && docker compose up -d
 ```
 
-通知里带标题（`【每日签到 · 日期】`）也是新镜像的标志。本项目**恒定只发一条**，不存在「消息条数」开关；如果你的容器已经更新、通知结尾也确实是本项目地址，却仍然收到多条，那是别的程序（比如另一个 bot / 另一份 cron）在发，用 `docker logs dailycheckin` 对照一下发送时间即可。
+通知里带标题（`【dailycheckin-plus 每日签到 · 日期】`）也是新镜像的标志。本项目**恒定只发一条**，不存在「消息条数」开关；如果你的容器已经更新、通知结尾也确实是本项目地址，却仍然收到多条，那是别的程序在发，按下面这条排查。
+
+**Q：更新后还是收到两条，怎么排查？**
+两个「会重复跑」的点都堵上了，但值得对一下：
+
+1. **有几份 cron 在跑**。官方镜像迁过来、或以前手写过 crontab 的，容器里可能同时存在「裸的签到行」和面板写入的托管区块。打开「设置 → 定时签到」随便保存一次，面板会把裸行注释留档并接管（`python tools/test_schedule.py` 就是锁这条行为的）；也可以直接 `docker exec dailycheckin crontab -l` 看有没有两行 `&& dailycheckin`。
+2. **有别的 bot / 另一份脚本在发**。`docker logs dailycheckin --tail 50` 对一下发送时间；本项目发通知时会打印推送渠道名，两边的日志时间对不上就说明是外部程序。
+
+**Q：项目从 `dailycheckin-compose` 改名叫 `dailycheckin-plus` 了，我要做什么？**
+三件事，各花一分钟：
+
+1. **换镜像名**：旧镜像 `ghcr.io/beacherz/dailycheckin-compose` 已不再更新，改用 `ghcr.io/beacherz/dailycheckin-plus:latest`。compose 用户把 `image:` 那行改掉；docker run 用户按上面「方式二」的最后一段重跑一次。
+2. **容器名不用动**：`container_name: dailycheckin` 故意保持没改 —— 改了会变成「新容器 + 旧容器」两份同时在跑，通知就会收到两条。
+3. **crontab 不用手动改**：老标记 `dailycheckin-compose managed` 面板照样认，保存定时设置时自动升级成新标记。
+
+**Q：通知标题里的 `dailycheckin-plus` 能改成我自己的吗？**
+通知标题里的项目名来自引擎里的 `PROJECT_NAME` 常量（`dailycheckin/utils/message.py`），跟着仓库名走；网页顶栏显示的则是 `PANEL_TITLE`（默认 `dailycheckin-plus`），这个可以用环境变量随便改。注意 `dailycheckin/` 目录是上游引擎源码，手工改动会在下次同步上游时被 `patches/` 覆盖，要改就走补丁（见「跟随上游更新」）。
 
 **Q：B 站日志里「直播签到：签到活动已下线」是 bug 吗？**
 不是。B 站自己下线了直播签到活动，任何工具都做不了，不影响其它签到项。

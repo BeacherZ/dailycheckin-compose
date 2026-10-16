@@ -1,4 +1,4 @@
-"""dailycheckin 网页管理面板。
+"""dailycheckin-plus 网页管理面板。
 
 * 在浏览器里维护各站点的 cookie，粘贴即自动规范化成引擎要的格式
 * 本地格式体检 + 在线登录态校验，一眼看出哪个 cookie 已经失效

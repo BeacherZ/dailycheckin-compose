@@ -1,6 +1,6 @@
 services:
   dailycheckin:
-    image: ghcr.io/beacherz/dailycheckin-compose:latest
+    image: ghcr.io/beacherz/dailycheckin-plus:latest
     container_name: dailycheckin
     restart: unless-stopped
     ports:

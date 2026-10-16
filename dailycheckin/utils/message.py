@@ -8,18 +8,18 @@ from urllib.parse import quote_plus
 
 import requests
 
-# 本项目（fork）自己的标识。通知标题、企业微信卡片里回跳的地址都取自这里，
-# 不再像上游那样在好几处分别写死同一个链接。
-PROJECT_NAME = "dailycheckin-compose"
-PROJECT_URL = "https://github.com/beacherz/dailycheckin-compose"
+# 本项目的标识。通知标题、企业微信卡片里回跳的地址都取自这里，
+# 不再像上游那样在好几处分别写死同一个链接。改项目名只需要动这两行。
+PROJECT_NAME = "dailycheckin-plus"
+PROJECT_URL = "https://github.com/beacherz/dailycheckin-plus"
 
 # 各站点签到结果之间的分隔行。用全角破折号：所有推送渠道都能正常显示，
 # 不会被当成 markdown 语法，也不会像方块字符那样在不同字体下变成乱码。
 SEPARATOR = "\n" + "—" * 22 + "\n"
 
 # 渠道自带标题能力（server 酱 / PushPlus / Gotify / ntfy / 企业微信）时的兜底标题。
-# 正常情况下由 main.py 传进来一个带日期的标题。
-NOTICE_TITLE = "每日签到"
+# 正常情况下由 main.py 传进来一个带日期的标题；标题里始终带上项目名。
+NOTICE_TITLE = f"{PROJECT_NAME} 每日签到"
 
 
 def render_content(blocks: list, title: str = "") -> str:

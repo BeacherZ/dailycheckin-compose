@@ -11,7 +11,7 @@ mkdir -p "$CONFIG_DIR" "$DC_HOME/cron" "$DC_HOME/logs" "$DC_HOME/data"
 cd "$DC_HOME"
 
 echo "======================================================"
-echo " dailycheckin-compose"
+echo " dailycheckin-plus"
 echo "  工作目录 : $DC_HOME"
 echo "  面板端口 : ${PANEL_PORT:-8080}"
 echo "  时区     : ${TZ:-Asia/Shanghai}"

@@ -9,7 +9,7 @@
 因为本项目的引擎上有 **2 个本地补丁**（见 `patches/`），直接覆盖会把它们悄悄抹掉：
 
 * 0001-bilibili-newlist     B 站旧接口下线，改 newlist + 空值兜底
-* 0002-notice-single-message 通知恒定只发一条（带标题、分隔行、项目地址）
+* 0002-notice-single-message 通知恒定只发一条（标题带项目名、分隔行、项目地址）
 
 本脚本会在替换引擎源码之后**自动重放这些补丁**，任何一个补丁打不上就直接回滚，
 绝不留下一个「改了一半」的引擎。
@@ -82,7 +82,7 @@ def api_get(path: str, repo: str = DEFAULT_REPO):
     url = "https://api.github.com/repos/%s%s" % (repo, path)
     req = urllib.request.Request(url, headers={
         "Accept": "application/vnd.github+json",
-        "User-Agent": "dailycheckin-compose-sync",
+        "User-Agent": "dailycheckin-plus-sync",
     })
     token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
     if token:
@@ -93,7 +93,7 @@ def api_get(path: str, repo: str = DEFAULT_REPO):
 
 def download_tarball(ref: str, repo: str = DEFAULT_REPO) -> bytes:
     url = "https://api.github.com/repos/%s/tarball/%s" % (repo, ref)
-    req = urllib.request.Request(url, headers={"User-Agent": "dailycheckin-compose-sync"})
+    req = urllib.request.Request(url, headers={"User-Agent": "dailycheckin-plus-sync"})
     token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
     if token:
         req.add_header("Authorization", "Bearer " + token)

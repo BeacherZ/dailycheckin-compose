@@ -3,9 +3,13 @@
 面板只维护 crontab 文件里的一段**带标记的区块**，其余行原样保留，
 所以用户自己写的其它定时任务不会被覆盖：
 
-    # >>> dailycheckin-compose managed >>>
+    # >>> dailycheckin-plus managed >>>
     0 9 * * * cd /dailycheckin && dailycheckin >> /dailycheckin/logs/dailycheckin.log 2>&1
-    # <<< dailycheckin-compose managed <<<
+    # <<< dailycheckin-plus managed <<<
+
+老项目名（dailycheckin-compose）留下的标记照样认，写回时会顺手升级成新标记。
+不这么做的话，老部署里那段「没人认领」的签到任务会和新加的一段并存 ——
+一天跑两遍、通知收两条。
 """
 
 from __future__ import annotations
@@ -17,8 +21,14 @@ import subprocess
 
 from . import paths
 
-BEGIN = "# >>> dailycheckin-compose managed >>>"
-END = "# <<< dailycheckin-compose managed <<<"
+# 第一项是当前使用的标记，后面的都是历史名字（只读兼容，写回时统一升级）
+MANAGED_MARKERS = ("dailycheckin-plus", "dailycheckin-compose")
+BEGIN = f"# >>> {MANAGED_MARKERS[0]} managed >>>"
+END = f"# <<< {MANAGED_MARKERS[0]} managed <<<"
+
+_MARKS = "|".join(re.escape(name) for name in MANAGED_MARKERS)
+# 匹配任意一代托管区块（当前名字或历史名字），第 1 组是区块正文
+BLOCK_RE = re.compile(rf"# >>> (?:{_MARKS}) managed >>>(.*?)# <<< (?:{_MARKS}) managed <<<", re.S)
 
 def _log_clean_line() -> str:
     return f"50 23 */2 * * rm -f {paths.LOG_DIR}/*.log"
@@ -90,6 +100,15 @@ def validate(cron: str) -> str | None:
     return None
 
 
+def _is_bare_checkin(line: str) -> bool:
+    """这一行是不是「没被托管标记包起来、但确实在调用 dailycheckin」的旧任务。"""
+    text = line.strip()
+    if not text or text.startswith("#"):
+        return False
+    fields = text.split()
+    return len(fields) >= 6 and bool(CALL_RE.search(text)) and "pip" not in text
+
+
 def parse() -> dict:
     """读出当前的定时设置。
 
@@ -99,7 +118,7 @@ def parse() -> dict:
     text = read_text()
     enabled = False
     cron = DEFAULT_CRON
-    block = re.search(re.escape(BEGIN) + r"(.*?)" + re.escape(END), text, re.S)
+    block = BLOCK_RE.search(text)
     if block:
         for line in block.group(1).splitlines():
             line = line.strip()
@@ -112,12 +131,8 @@ def parse() -> dict:
                 break
     else:
         for line in text.splitlines():
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            fields = line.split()
-            if len(fields) >= 6 and CALL_RE.search(line) and "pip" not in line:
-                cron = " ".join(fields[:5])
+            if _is_bare_checkin(line):
+                cron = " ".join(line.split()[:5])
                 enabled = True
                 break
     return {
@@ -134,14 +149,21 @@ def set_schedule(enabled: bool, cron: str) -> dict:
     if err:
         raise ValueError(err)
     text = read_text()
-    block_re = re.compile(re.escape(BEGIN) + r".*?" + re.escape(END), re.S)
-    if enabled:
-        body = f"{BEGIN}\n{_run_line(cron)}\n{END}"
+    body = f"{BEGIN}\n{_run_line(cron) if enabled else '# 定时签到已在面板中关闭'}\n{END}"
+    # 老标记（dailycheckin-compose）也会被匹配到，替换后自然升级成新标记
+    if BLOCK_RE.search(text):
+        text = BLOCK_RE.sub(lambda _: body, text, count=1)
     else:
-        body = f"{BEGIN}\n# 定时签到已在面板中关闭\n{END}"
-    if block_re.search(text):
-        text = block_re.sub(lambda _: body, text, count=1)
-    else:
+        # 托管区块还不存在，但 crontab 里可能已经有一行裸的签到任务（官方镜像迁过来、
+        # 或者以前手写的）。直接再追加一段就是一天跑两遍、通知收两条 ——
+        # 这里把它就地注释留档，交给面板统一接管。
+        lines = []
+        for line in text.splitlines():
+            if _is_bare_checkin(line):
+                lines.append(f"# 已由 dailycheckin-plus 面板接管（原文留档）：{line.strip()}")
+            else:
+                lines.append(line)
+        text = "\n".join(lines)
         if not text.endswith("\n"):
             text += "\n"
         text += f"\n##############每日签到任务##############\n{body}\n"
