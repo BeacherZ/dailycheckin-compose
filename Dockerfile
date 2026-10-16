@@ -53,6 +53,20 @@ COPY UPSTREAM.json ./UPSTREAM.json
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
+# 构建溯源：页脚的「当前容器要不要更新」靠的就是这一份 —— 把构建这次镜像的提交烤进去，
+# 面板拿它跟 GitHub 上 main 的最新提交比。CI 通过 build-arg 传；本地 docker build 不传时
+# 干脆不生成文件，面板会显示「未记录构建提交」，而不是拿 unknown 去跟远端比出个假的「有新版本」。
+# 放在最后：commit 一变只重建这一层，前面的引擎/面板安装全部命中缓存。
+ARG GIT_COMMIT=
+ARG GIT_DATE=
+RUN set -eux; \
+    if [ -n "$GIT_COMMIT" ]; then \
+        printf '{"commit":"%s","date":"%s"}\n' "$GIT_COMMIT" "$GIT_DATE" > ${DC_HOME}/PANEL_BUILD.json; \
+        cat ${DC_HOME}/PANEL_BUILD.json; \
+    else \
+        echo '未传入 GIT_COMMIT：不写构建溯源文件（面板会显示「未记录构建提交」）'; \
+    fi
+
 EXPOSE 8080
 VOLUME ["/dailycheckin/config", "/dailycheckin/cron", "/dailycheckin/logs", "/dailycheckin/data"]
 

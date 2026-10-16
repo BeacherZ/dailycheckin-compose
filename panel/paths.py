@@ -38,6 +38,11 @@ TOKEN = _env("PANEL_TOKEN", "")
 TITLE = _env("PANEL_TITLE", "dailycheckin-plus")
 TZ = _env("TZ", "Asia/Shanghai")
 
+# 本项目的仓库地址（面板 = 这个仓库新增的部分）。页脚的链接、以及
+# 「容器要不要更新」的比对对象都是它。换成自己的 fork：设 PANEL_REPO=owner/name。
+PROJECT_REPO = _env("PANEL_REPO", "BeacherZ/dailycheckin-plus")
+PROJECT_URL = "https://github.com/" + PROJECT_REPO
+
 MAX_BACKUPS = 30
 MAX_RUNS = 20
 RUN_TIMEOUT = int(_env("PANEL_RUN_TIMEOUT", "1800"))

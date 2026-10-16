@@ -162,6 +162,67 @@ check("表单类站点的字段直接摊开（不再藏进「其它参数（可�
 check("cookie 类站点的可选参数仍然收在折叠条里",
       "其它参数（${(site.fields || []).length} 项，可选）" in js)
 
+print("8) 推送通知：按渠道分组装进方框")
+check("index.html 用分组容器（不再是 27 个输入框平铺）",
+      re.search(r'class="notices"\s+id="noticeGroups"', html) is not None and "noticeFields" not in html)
+check("app.js 渲染到 #noticeGroups", '$("noticeGroups").innerHTML = noticeHTML(st)' in js)
+check("方框是「头 / 字段 / 状态」三段", 'class="nbox-head"' in js and 'class="nbox-fields"' in js and 'class="nbox-foot"' in js)
+check("字段多的渠道整行铺开（跟后端 wide 标志联动）", 'nbox${g.wide ? " wide" : ""}' in js)
+check("分组数据来自后端，不在前端写死渠道名", "st.notice_groups" in js and "notice_keys" in js)
+# 同排等高：靠 grid 拉伸 + 状态行钉底，而不是给写死的高度（写死的话内容一多就溢出）
+notices_css = rule(".notices")
+check("方框网格同排等高（align-items: stretch）", "align-items: stretch" in notices_css, notices_css.strip()[:110])
+nbox_css = rule(".nbox")
+check("方框自身不写死高度（内容多的渠道会溢出）", "height:" not in nbox_css, nbox_css.strip()[:110])
+check("方框是纵向 flex（状态行才能钉到底）", "display: flex" in nbox_css and "flex-direction: column" in nbox_css, nbox_css.strip()[:110])
+check("状态行钉在方框底部（拉高时空白落在字段与状态之间，不会看着错位）",
+      re.search(r"\.nbox-foot\s*\{[^}]*margin:\s*auto\s+0\s+0", css) is not None)
+check("整行铺开用 1 / -1（窄屏只剩一列时 span 2 会凭空多出一列）",
+      re.search(r"\.nbox\.wide\s*\{\s*grid-column:\s*1\s*/\s*-1", css) is not None)
+check("字段网格自适应列数（宽方框自然排更多列）",
+      "grid-template-columns: repeat(auto-fit, minmax(146px, 1fr))" in rule(".nbox-fields"))
+check("配置键放不下时省略号截断，完整值挂 title", "text-overflow: ellipsis" in rule(".nf-key") and 'title="${esc((full || label)' in js)
+check("表单事件仍按 data-notice 取值（保存逻辑没被改坏）",
+      'document.querySelectorAll("[data-notice]")' in js and 'data-notice="${esc(key)}"' in js)
+check("保存按钮还在", 'id="btnSaveNotice"' in html)
+
+print("9) 页脚：项目地址 + 当前容器要不要更新")
+check("主界面有页脚区块", 'class="app-foot"' in html)
+check("页脚有项目仓库链接（新窗口打开，别把面板顶掉）",
+      re.search(r'class="foot-repo" id="footRepo"[^>]*target="_blank"[^>]*rel="noopener', html) is not None)
+check("设置页最下方也有「关于本项目」", "关于本项目" in html and 'id="aboutRepo"' in html)
+check("两处共用一套更新状态（footUpdate / aboutUpdate）",
+      'id="footUpdate"' in html and 'id="aboutUpdate"' in html)
+check("两处的「检查更新」都挂在同一个类上", html.count('class="ghost tiny js-check-update"') == 2, html.count('class="ghost tiny js-check-update"'))
+check("app.js 用同一个处理器接住两个按钮",
+      'document.querySelectorAll(".js-check-update").forEach' in js)
+check("页脚先画本地版本、再异步问 /api/update（首屏不等网络）",
+      "paintUpdate(st.update)" in js and 'api("/update"' in js)
+check("/api/update 只在点按钮时带 force=1（否则吃后端的 3 小时缓存）",
+      'api("/update" + (force ? "?force=1" : ""))' in js)
+check("四种结论都画到了（有新版本 / 已是最新 / 判断不了 / 检查失败）",
+      all(t in js for t in ("有新版本：远端", "已是最新（", "判断不了：本地没记录构建提交", "检查更新失败")))
+check("有新版本时给出更新命令", "docker compose pull" in js)
+check("简版的 /api/state 不会把已查到的结论抹掉", "info.checked_at === undefined" in js)
+
+print("10) 更新检查的后端契约（离线，只读源码）")
+sys.path.insert(0, ROOT)
+from panel import store, update  # noqa: E402
+
+groups = store.notice_groups()
+keys = [f["key"] for g in groups for f in g["fields"]]
+check("渠道分组和扁平列表用的是同一份数据", keys == [k for k, _ in store.NOTICE_KEYS], f"{len(keys)} 个键")
+check("27 个推送字段不多不少、没有重复", len(keys) == 27 and len(set(keys)) == 27, f"{len(keys)} / {len(set(keys))}")
+check("只有字段最多的那一组整行铺开", sum(1 for g in groups if g["wide"]) == 1, [g["name"] for g in groups if g["wide"]])
+check("每组都给得出短标签和完整标签（title 要用）",
+      all(f["label"] and f["full"] for g in groups for f in g["fields"]))
+update_src = open(os.path.join(ROOT, "panel", "update.py"), encoding="utf-8").read()
+check("构建溯源读不到时返回空提交（而不是编一个）", update.build_stamp().get("commit") == "")
+check("远端提交和本地提交都认得出才敢下「要不要更新」的结论",
+      "(mine != theirs) if (mine and theirs) else None" in update_src)
+check("检查结果有缓存（GitHub 匿名接口 60 次/小时，不能当心跳打）",
+      "CACHE_TTL = 3 * 3600" in update_src)
+
 print("=" * 66)
 print(f"通过 {len(passed)}  失败 {len(failed)}")
 for one in failed:

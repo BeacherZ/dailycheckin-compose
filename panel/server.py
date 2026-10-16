@@ -15,7 +15,7 @@ import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import auth, catalog, cookies as ck, paths, runner, schedule, store, upstream, verify
+from . import auth, catalog, cookies as ck, paths, runner, schedule, store, update, upstream, verify
 
 PANEL_VERSION = "2.1.0"
 MAX_BODY = 4 * 1024 * 1024
@@ -123,7 +123,11 @@ def build_state() -> dict:
         },
         "sites": sites,
         "notice_keys": [{"key": k, "label": v} for k, v in store.NOTICE_KEYS],
+        "notice_groups": store.notice_groups(),
         "notice": notice,
+        # 只带本地构建信息（不发网络请求）：页脚先把它画出来，
+        # 要不要更新再由页面自己异步打 /api/update 问。
+        "update": update.local_info(PANEL_VERSION),
         "schedule": schedule.parse(),
         "status_updated": status.get("updated", 0),
         "runs": runner.list_runs(8),
@@ -420,6 +424,17 @@ def h_crontab_put(h):
 @route("GET", r"/api/backups")
 def h_backups(h):
     return {"backups": store.list_backups()}
+
+
+@route("GET", r"/api/update")
+def h_update(h):
+    """检查容器要不要更新。走 GitHub 接口，结果在 update.py 里缓存 3 小时。
+
+    这也是**唯一**会主动访问外网的接口，所以别把它挂进 /api/state ——
+    页面首屏不应该等一个可能超时的网络请求。`?force=1` 强制重查。
+    """
+    force = h.query.get("force", ["0"])[0] in ("1", "true", "yes")
+    return update.check(PANEL_VERSION, force=force)
 
 
 @route("POST", r"/api/backups/(?P<name>[A-Za-z0-9._\-]+)/restore")

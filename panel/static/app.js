@@ -220,6 +220,13 @@
     buildGroupFilter();
     render();
     paintHeader();
+    // 页脚 / 设置页的版本信息：先用 /api/state 里的本地信息画出来（不发网络请求），
+    // 再在后台查一次有没有新版本 —— 引擎接口该快还是快。
+    paintUpdate(st.update);
+    if (!UP.autoTried) {
+      UP.autoTried = true;
+      checkUpdate(false);
+    }
     if (!silent) toast("已刷新");
   }
 
@@ -853,6 +860,145 @@
     if (name === "log") { loadLogs(); S.logTimer = setInterval(loadLogs, 10000); }
   }
 
+  /* ======================================================================
+     推送通知：按「渠道」分组
+     ====================================================================== */
+  /* 每个渠道一个方框：同一家的字段聚在一起，不用在一大片输入框里找。
+     方框同排等高由 CSS 保证（.notices 的 align-items: stretch）—— 所以每个方框
+     底部都钉一行状态，被拉高时空白落在字段与状态之间，看上去是留白，而不是没对齐。
+     窄方框里「字段名 + 配置键」放不下，配置键允许省略号截断，完整值挂 title。 */
+  function nfHTML(key, label, value, full) {
+    return `<label class="nf" title="${esc((full || label) + " · " + key)}">
+      <span class="nf-top"><span class="nf-label">${esc(label)}</span><span class="nf-key">${esc(key)}</span></span>
+      <input type="text" data-notice="${esc(key)}" value="${esc(value || "")}" autocomplete="off" spellcheck="false"></label>`;
+  }
+
+  function noticeHTML(st) {
+    const groups = st.notice_groups || [];
+    const notice = st.notice || {};
+    // 后端还没给分组信息时（理论上不会）退化成一个大方框，至少不影响填写。
+    if (!groups.length) {
+      return `<section class="nbox wide">
+        <header class="nbox-head"><i class="nbox-dot"></i><b>推送字段</b></header>
+        <div class="nbox-fields">${(st.notice_keys || []).map((k) => nfHTML(k.key, k.label, notice[k.key], k.label)).join("")}</div>
+      </section>`;
+    }
+    return groups.map((g) => {
+      const filled = g.fields.filter((f) => (notice[f.key] || "").trim()).length;
+      const foot = filled
+        ? `<b class="nbox-count">已配置 ${filled} 项</b>`
+        : `<span class="nbox-idle">未配置</span>`;
+      return `<section class="nbox${g.wide ? " wide" : ""}${filled ? " on" : ""}">
+        <header class="nbox-head"><i class="nbox-dot"></i><b>${esc(g.name)}</b>
+          <span class="nbox-tag">${g.fields.length} 项</span></header>
+        <div class="nbox-fields">${g.fields.map((f) => nfHTML(f.key, f.label, notice[f.key], f.full)).join("")}</div>
+        <p class="nbox-foot">${foot}</p>
+      </section>`;
+    }).join("");
+  }
+
+  /* ======================================================================
+     项目地址 + 「当前容器要不要更新」
+     ====================================================================== */
+  const UP = { busy: false, data: null, autoTried: false };
+
+  const fmtDay = (iso) => {
+    const d = new Date(iso || "");
+    if (isNaN(d.getTime())) return (iso || "").slice(0, 10);
+    const p = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  };
+
+  /* 画「项目地址 + 更新状态」。两处共用：主界面页脚、设置页最下方。
+     结论只有四种，别再自己发明第五种：
+       needs_update === true   有新版本，顺手给出更新命令
+       needs_update === false  已是最新
+       needs_update === null   判断不了（没记录构建提交，或压根还没检查）
+       ok === false            检查失败（网络不通 / 限流），如实说，不假装已是最新 */
+  function paintUpdate(info) {
+    if (!info) return;
+    // /api/state 带的是「只有本地版本」的简版（没有 checked_at）。已经查到过结果，
+    // 就别让简版把结论抹掉 —— 只更新其中已知的本地字段。
+    if (info.checked_at === undefined && UP.data && UP.data.checked_at !== undefined) {
+      info = Object.assign({}, info, UP.data);
+    }
+    UP.data = info;
+
+    const url = info.url || (info.repo ? "https://github.com/" + info.repo : "");
+    [["footRepo", "footRepoName"], ["aboutRepo", "aboutRepoName"]].forEach(([a, b]) => {
+      const link = $(a);
+      if (link && url) link.href = url;
+      const name = $(b);
+      if (name) name.textContent = info.repo || "项目地址";
+    });
+
+    const build = info.short ? `构建 ${info.short}` : "未记录构建提交";
+    if ($("aboutLocal")) $("aboutLocal").textContent = `v${info.version || "?"} · ${build}`;
+
+    const remote = info.remote || {};
+    let dot = "muted", text = "还没检查过更新", tip = "", brief = "";
+    if (info.ok === false) {
+      text = info.error || "检查更新失败";
+      brief = "点「检查更新」重试 —— 检查走的是 GitHub 接口，容器上不了外网就只能手动拉镜像。";
+      tip = brief;
+    } else if (info.ok === true) {
+      if (info.needs_update === true) {
+        dot = "warn";
+        text = `有新版本：远端 ${remote.short}${remote.date ? "（" + fmtDay(remote.date) + "）" : ""}`;
+        brief = "更新命令：docker compose pull && docker compose up -d";
+        tip = `${brief}\n远端最新提交：${remote.message || remote.short}${remote.date ? "　" + fmtDay(remote.date) : ""}`;
+      } else if (info.needs_update === false) {
+        dot = "ok";
+        text = `已是最新（${info.short}）`;
+        tip = `远端最新提交：${remote.message || remote.short}${remote.date ? "　" + fmtDay(remote.date) : ""}`;
+      } else {
+        // 本地没记录构建提交（多半是本地直接跑面板），远端信息照样给出来
+        text = `判断不了：本地没记录构建提交${remote.short ? `（远端 ${remote.short}）` : ""}`;
+        brief = "容器版镜像会记录构建提交；本地直接 python -m panel 跑的没有，所以比不了。";
+        tip = brief;
+      }
+    }
+
+    // 圆点和文字用同一个状态色：只看颜色就知道是新版本还是已是最新
+    [["footUpdate", "footDot", "footUpdateText"], ["aboutUpdate", "aboutDot", "aboutUpdateText"]].forEach(([wrap, d, t]) => {
+      const el = $(d);
+      if (el) el.className = "up-dot " + dot;
+      const txt = $(t);
+      if (txt) txt.textContent = text;
+      const box = $(wrap);
+      if (box) box.className = "foot-up " + dot;
+    });
+    // 详细解释（远端提交说明、更新命令）挂在 title 上，页面本身保持在两行内。
+    ["footUpdate", "aboutUpdate"].forEach((id) => {
+      const el = $(id);
+      if (el) el.title = tip;
+    });
+    const aboutTip = $("aboutTip");
+    if (aboutTip) {
+      // 设成 textContent 而不是 innerHTML：这里可能带远端提交信息（外部内容）。
+      aboutTip.textContent = brief || "判断依据是构建这个镜像时的那次提交，跟 GitHub 上 main 的最新提交比。";
+    }
+  }
+
+  async function checkUpdate(force = false) {
+    if (UP.busy) return;
+    UP.busy = true;
+    document.querySelectorAll(".js-check-update").forEach((b) => { b.disabled = true; });
+    try {
+      const r = await api("/update" + (force ? "?force=1" : ""));
+      paintUpdate(r);
+      if (force) {
+        toast(r.ok === false ? r.error : r.needs_update ? "有新版本，可以更新了" : "已是最新");
+      }
+    } catch (e) {
+      paintUpdate(Object.assign({}, UP.data || {}, { ok: false, error: "检查更新失败：" + e.message, needs_update: null }));
+      if (force) toast("检查更新失败：" + e.message);
+    } finally {
+      UP.busy = false;
+      document.querySelectorAll(".js-check-update").forEach((b) => { b.disabled = false; });
+    }
+  }
+
   async function openSettings() {
     const st = S.state;
     const sch = st.schedule;
@@ -869,10 +1015,7 @@
     $("accOld").value = $("accNew").value = $("accNew2").value = "";
     $("accTip").textContent = S.auth && S.auth.auth_path ? `凭据存放：${S.auth.auth_path}` : "";
 
-    $("noticeFields").innerHTML = st.notice_keys
-      .map((k) => `<div><label>${esc(k.label)} <span class="opt">${esc(k.key)}</span></label>
-        <input type="text" data-notice="${esc(k.key)}" value="${esc(st.notice[k.key] || "")}" autocomplete="off"></div>`)
-      .join("");
+    $("noticeGroups").innerHTML = noticeHTML(st);
 
     $("configTip").textContent = `路径：${st.panel.config_path}`;
 
@@ -1007,6 +1150,11 @@
         await loadState(true);
       } catch (e) { toast("保存失败：" + e.message); }
     };
+
+    // 更新检查的按钮有两处（主界面页脚 + 设置页最下方），同一套行为，别各写一份
+    document.querySelectorAll(".js-check-update").forEach((b) => {
+      b.onclick = () => checkUpdate(true);
+    });
 
     $("btnSaveNotice").onclick = async () => {
       const notice = {};

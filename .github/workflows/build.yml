@@ -37,6 +37,12 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
+      - name: 计算构建溯源
+        id: stamp
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "date=$(git log -1 --format=%cI)" >> "$GITHUB_OUTPUT"
+
       - name: 构建镜像（Dockerfile 内含引擎自检，装不上会直接失败）
         uses: docker/build-push-action@v6
         with:
@@ -44,6 +50,9 @@ jobs:
           load: true
           push: false
           tags: dailycheckin-plus:ci
+          build-args: |
+            GIT_COMMIT=${{ steps.stamp.outputs.sha }}
+            GIT_DATE=${{ steps.stamp.outputs.date }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -173,6 +182,27 @@ jobs:
           python3 -c "import json;st=json.load(open('state-src.json',encoding='utf-8'));up=st['engine']['upstream'];print('面板显示的引擎来源:',up['repo'],up['ref'],up['commit'],'| 补丁',len(up['patches']),'个');assert up['commit'],up;assert up['patches'],up;assert st['engine']['sites_without_meta']==[],st['engine']['sites_without_meta'];print('所有站点都有元数据')"
 
 
+      - name: 推送通知按渠道分组，且分组没有漏键
+        run: |
+          set -e
+          curl -fsS -H "X-Panel-Token: ci-secret" http://127.0.0.1:18080/api/state -o state-notice.json
+          python3 -c "import json;st=json.load(open('state-notice.json',encoding='utf-8'));g=st['notice_groups'];k=[f['key'] for x in g for f in x['fields']];assert len(g)==11,len(g);assert k==[i['key'] for i in st['notice_keys']],'分组后的键必须与扁平列表一字不差';assert len(set(k))==27,len(k);assert sum(1 for x in g if x['wide'])==1,'整行铺开的组只该有企业微信';assert all(f['label'] and f['full'] for x in g for f in x['fields']);print('推送通知分组:','、'.join('%s(%d)'%(x['name'],len(x['fields'])) for x in g))"
+
+      - name: 页脚的「要不要更新」：构建溯源 + /api/update 不会把面板拖垮
+        run: |
+          set -e
+          python3 -c "import json;u=json.load(open('state-notice.json',encoding='utf-8'))['update'];print('构建溯源:',u['version'],u['short'],u['date']);assert u['repo'] and u['url'].startswith('https://github.com/'),u;assert u['commit'],'镜像里没生成 PANEL_BUILD.json: %s'%u"
+          # 镜像里记录的提交必须就是这次构建的提交 —— 不然页脚会一直喊「有新版本」。
+          # 用 Python 断言而不是 bash 的 test "$(docker exec ...)"：嵌套引号里再塞
+          # 引号太容易写错（\" 在单引号里是字面量，传给 Python 直接语法错），
+          # 而且断言失败时能把这个值打出来。
+          docker exec dc-ci python -c "import panel.update as u;c=u.build_stamp()['commit'];e='${{ steps.stamp.outputs.sha }}';print('镜像内构建提交', c[:10], '期望', e[:10]);assert c==e,(c,e)"
+          # /api/update 会真去问 GitHub。这里只要求「不管成功失败都回 200 + 结构化结论」——
+          # 网络抖一下就变红的话，这个 job 以后没人敢信。
+          code=$(curl -s -o upd.json -w '%{http_code}' -H "X-Panel-Token: ci-secret" http://127.0.0.1:18080/api/update)
+          test "$code" = "200"
+          python3 -c "import json;d=json.load(open('upd.json'));print('更新检查: ok=%s needs_update=%s %s'%(d['ok'],d['needs_update'],d['error'] or (d['remote'] or {}).get('short','')));assert d['ok'] in (True,False) and 'needs_update' in d"
+
       - name: 引擎加载与 B 站接口修复
         run: |
           set -e
@@ -238,6 +268,15 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
+      # 面板页脚的「当前容器要不要更新」就是拿这个提交去跟 GitHub 上 main 的最新提交比。
+      # 不用 github.sha 是有原因的：它在这里等于「这次构建从哪 checkout」，
+      # 而 git rev-parse HEAD 拿到的是工作区真实提交，两者一般一样、但后者更直接。
+      - name: 计算构建溯源
+        id: stamp
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "date=$(git log -1 --format=%cI)" >> "$GITHUB_OUTPUT"
+
       - name: 登录 GHCR
         uses: docker/login-action@v3
         with:
@@ -262,5 +301,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            GIT_COMMIT=${{ steps.stamp.outputs.sha }}
+            GIT_DATE=${{ steps.stamp.outputs.date }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

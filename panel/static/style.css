@@ -322,7 +322,7 @@ header {
 .toolbar .spacer { flex: 1 1 0; }
 
 /* ============================ 内容区 ============================ */
-main { padding: 10px 22px 90px; }
+main { padding: 10px 22px 22px; }
 
 /* 卡片默认一行 4 张；窗口变窄依次降到 3 / 2 / 1，断点与下面的 .list 对齐，
    两种视图切换时不会一个挤一个松。
@@ -541,6 +541,70 @@ dialog::backdrop { background: rgba(10, 14, 22, .5); backdrop-filter: blur(3px);
 .kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); gap: 10px; }
 .kv label { display: block; font-size: 12px; color: var(--fg-2); margin-bottom: 4px; }
 
+/* ---- 推送通知：按渠道分组的方框 ----
+   以前 27 个字段平铺成一个四列网格：标签长短不一、一换行就把同一排的输入框
+   顶得上下不齐，同一个渠道的字段还被拆到两行去。
+   现在一个渠道一个方框，方框内再排字段。高度不给定值，靠 grid 自己撑：
+   同排的方框被 align-items: stretch 拉平，而 .nbox 是纵向 flex、状态行margin-top:auto，
+   多出来的高度全部落在「字段」和「状态行」之间 —— 看上去是留白，不是没对齐。
+   字段多的那一组（企业微信）整行铺开（.wide），免得它一个人把同排顶高一大截。 */
+.notices { display: grid; grid-template-columns: repeat(auto-fit, minmax(298px, 1fr)); gap: 10px; align-items: stretch; }
+.nbox {
+  display: flex; flex-direction: column; gap: 9px;
+  min-width: 0;
+  padding: 11px 12px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+/* 整行铺开：无论外层是几列都占满一行（用 1 / -1 而不是 span 2，
+   窄屏只剩一列时 span 2 会凭空多出一列）。 */
+.nbox.wide { grid-column: 1 / -1; }
+.nbox.on { border-color: color-mix(in srgb, var(--ok) 30%, var(--line)); }
+.nbox-head { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.nbox-head b { font-size: 12.5px; font-weight: 620; letter-spacing: -.005em; }
+/* 参数个数贴着渠道名，不推到行尾 —— 整行铺开的那一组会把标题拉得很宽，
+   推过去就离名字 600px 开外了，像是另一个字段。 */
+.nbox-tag { flex: none; font-family: var(--mono); font-size: 10.5px; color: var(--fg-3); }
+.nbox-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--line-2); flex: none; }
+.nbox.on .nbox-dot { background: var(--ok); box-shadow: 0 0 0 3px var(--ok-soft); }
+.nbox-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(146px, 1fr)); gap: 8px 9px; }
+.nf { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.nf-top { display: flex; align-items: baseline; gap: 5px; min-width: 0; }
+.nf-label { flex: none; font-size: 11.5px; color: var(--fg-2); }
+/* 配置键是给「要和 config.json 对照」的人看的，窄框里放不下就省略号 + title */
+.nf-key { min-width: 0; font-family: var(--mono); font-size: 10.5px; color: var(--fg-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nf input { padding: 6px 9px; font-size: 12.5px; }
+.nbox-foot { margin: auto 0 0; min-height: 14px; font-size: 11px; color: var(--fg-3); }
+.nbox-count { color: var(--ok); font-weight: 600; }
+
+/* ---- 页脚：项目地址 + 更新状态 ---- */
+.app-foot {
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 22px 26px;
+  font-size: 11.5px; color: var(--fg-3);
+}
+.foot-repo { display: inline-flex; align-items: center; gap: 6px; min-width: 0; color: var(--fg-2); text-decoration: none; }
+.foot-repo:hover { color: var(--brand); }
+.foot-repo svg { flex: none; color: var(--fg-3); }
+.foot-repo b { font-size: 12px; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.foot-div { flex: none; width: 1px; height: 13px; background: var(--line-2); }
+.foot-up { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.foot-up.ok { color: var(--ok); }
+.foot-up.warn { color: var(--warn); }
+.up-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--line-2); flex: none; }
+.up-dot.ok { background: var(--ok); }
+.up-dot.warn { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
+
+/* ---- 设置页底部的「关于本项目」 ---- */
+.about {
+  display: flex; flex-direction: column; gap: 9px;
+  padding: 11px 13px;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--surface-2);
+}
+.about-line { display: flex; align-items: center; gap: 9px; min-width: 0; font-size: 12.5px; color: var(--fg-2); }
+
 /* ---- 站点配置弹窗 ---- */
 /* 整块做成「头 / 可滚内容 / 底栏」三段的 flex：cookie 框再长也只滚中间那块，
    底栏的「保存」永远在视线里，不用滚到底才能点。
@@ -601,7 +665,11 @@ dialog::backdrop { background: rgba(10, 14, 22, .5); backdrop-filter: blur(3px);
 @media (max-width: 720px) {
   header { padding: 11px 14px; gap: 12px; }
   .statbar { display: none; }
-  main, .toolbar { padding-left: 14px; padding-right: 14px; }
+  main, .toolbar, .app-foot { padding-left: 14px; padding-right: 14px; }
+  /* 页脚一行放不下就换行，别把「检查更新」挤出屏幕 */
+  .app-foot { flex-wrap: wrap; gap: 8px; }
+  .app-foot .spacer { flex-basis: 100%; }
+  .foot-div { display: none; }
   .search-wrap { width: 100%; }
   .actions { margin-left: 0; width: 100%; }
   .drawer { width: 100vw; }
