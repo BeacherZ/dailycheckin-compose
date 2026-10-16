@@ -159,6 +159,8 @@ jobs:
           python3 tools/test_notice.py
           echo "--- crontab 托管区块自测：老项目名标记要认、要能升级，且不能变成两段任务"
           python3 tools/test_schedule.py
+          echo "--- 前端契约自测：首屏不预置登录屏、默认已配置优先、卡片 4 列 / 列表 2 列"
+          python3 tools/test_panel_static.py
           echo "--- UPSTREAM.json 溯源信息"
           python3 -c "import json;s=json.load(open('UPSTREAM.json',encoding='utf-8'));print('上游',s['repo'],'@',s['ref'],s['commit'][:10],'| 引擎版本',s['version'],'| 本地补丁',len(s['patches']),'个 | 站点',len(s['engine_sites']),'个');assert s['commit'] and s['engine_sites'] and s['patches']"
           echo "--- 两个本地补丁的代码特征必须在引擎里"

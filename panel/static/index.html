@@ -10,16 +10,21 @@
 </head>
 <body>
 
-<!-- ==================== 登录 / 首次设置 ==================== -->
+<!-- ==================== 登录 / 首次设置 ====================
+     默认是「正在连接」的中性态：表单先藏着，标题也不写「设置后台账号 / 登录后台」，
+     因为这两句在还没问过服务端之前都可能猜错。app.js 会先读本地上次的登录状态，
+     已登录就立刻整块隐藏（脚本在 body 末尾同步执行，等于首帧之前就定了），
+     其余情况再拉 /api/auth/status 换成对应的那一屏。
+     顺序别改：一旦在这里预置具体某一屏的文案，没登录过的人打开就会先看到它闪一下。 -->
 <div class="gate" id="gate">
   <div class="gate-card">
     <div class="gate-logo" aria-hidden="true">
       <svg viewBox="0 0 32 32" width="34" height="34"><rect width="32" height="32" rx="9" fill="currentColor"/><path d="M9 17l5 5 9-11" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </div>
-    <h1 id="gateTitle">设置后台账号</h1>
-    <p class="gate-sub" id="gateSub">第一次使用，先给这个管理后台设置一个账号和密码。</p>
+    <h1 id="gateTitle">正在连接面板…</h1>
+    <p class="gate-sub" id="gateSub">正在确认登录状态，马上就好。</p>
 
-    <form id="gateForm" autocomplete="off">
+    <form id="gateForm" autocomplete="off" class="hidden">
       <label class="fld"><span>账号</span>
         <input type="text" id="gateUser" autocomplete="username" spellcheck="false" placeholder="例如 admin">
       </label>
@@ -88,6 +93,13 @@
     <option value="unverified">未校验</option>
   </select>
 
+  <select id="sortSelect" title="站点排序方式">
+    <option value="configured">已配置优先</option>
+    <option value="default">默认顺序</option>
+    <option value="name">按名称</option>
+    <option value="group">按分类</option>
+  </select>
+
   <button class="chip-btn" id="btnOnlyTodo" title="只看还没配置 cookie 的站点">只看待配置</button>
 
   <span class="spacer"></span>
@@ -99,7 +111,8 @@
 </div>
 
 <main>
-  <div id="sites" class="grid"></div>
+  <p class="empty" id="bootHint">正在读取站点列表…</p>
+  <div id="sites" class="grid hidden"></div>
   <div id="emptyHint" class="empty hidden"></div>
 </main>
 

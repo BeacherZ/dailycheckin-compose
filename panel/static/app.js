@@ -3,7 +3,24 @@
   "use strict";
 
   const API = "/api";
-  const TOKEN = localStorage.getItem("panel_token") || "";
+
+  /* localStorage 在部分浏览器的隐私模式里会直接抛异常（老 Safari 尤其），
+     面板可用性不能押在它身上：读写都包一层，失败就当没有这个存储。 */
+  const lsGet = (k) => { try { return localStorage.getItem(k); } catch (_) { return null; } };
+  const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (_) { /* 隐私模式：放弃持久化 */ } };
+
+  const TOKEN = lsGet("panel_token") || "";
+
+  /* 「上次登录到哪一步」的本地提示。只影响首帧先画哪一屏，真正的判定永远以
+     /api/auth/status 为准 —— 它是客户端存的，伪造它只能骗到自己的浏览器。 */
+  const HINT_KEY = "dc_auth_hint";
+  const readHint = () => {
+    try { return JSON.parse(lsGet(HINT_KEY) || "{}") || {}; } catch (_) { return {}; }
+  };
+  const writeHint = (initialized, loggedIn) =>
+    lsSet(HINT_KEY, JSON.stringify({ i: !!initialized, l: !!loggedIn }));
+
+  const SORT_MODES = ["configured", "default", "name", "group"];
 
   const S = {
     state: null,
@@ -13,7 +30,8 @@
     checks: {},      // 站点 KEY -> 每账号的本地体检结果
     dirty: {},       // 站点 KEY -> 是否有未保存改动
     expanded: new Set(),
-    view: localStorage.getItem("dc_view") === "list" ? "list" : "card",
+    view: lsGet("dc_view") === "list" ? "list" : "card",
+    sort: SORT_MODES.includes(lsGet("dc_sort")) ? lsGet("dc_sort") : "configured",
     onlyTodo: false,
     runId: null,
     pollTimer: null,
@@ -88,6 +106,7 @@
     S.gateMode = mode;
     const setup = mode === "setup";
     $("gate").classList.remove("hidden");
+    $("gateForm").classList.remove("hidden");   // 初始是「正在连接」态，表单藏着
     $("app").classList.add("hidden");
     $("gateTitle").textContent = setup ? "设置后台账号" : "登录后台";
     $("gateSub").innerHTML = setup
@@ -100,7 +119,7 @@
     const p = S.auth || {};
     $("gateTip").textContent =
       tip || (setup ? `账号 ${p.min_user || 2}-${p.max_user || 32} 个字符，密码至少 ${p.min_pass || 6} 位。` : "");
-    setTimeout(() => $(setup ? "gateUser" : "gateUser").focus(), 60);
+    setTimeout(() => $("gateUser").focus(), 60);
   }
 
   function hideGate() {
@@ -110,10 +129,15 @@
 
   async function gateCheck() {
     const { status, data } = await apiRaw("/auth/status");
-    if (status !== 200 || !data) return showGate("login", "连不上面板服务，请检查容器是否在运行。");
+    if (status !== 200 || !data) {
+      writeHint(true, false);   // 服务连不上：下次进来先画登录屏，别去瞎等
+      return showGate("login", "连不上面板服务，请检查容器是否在运行。");
+    }
     S.auth = data;
-    if (!data.initialized) return showGate("setup");
-    if (!data.logged_in) return showGate("login");
+    // 每次都把结论写回本地：下次打开就能在首帧直接画对，不用等这一轮请求。
+    if (!data.initialized) { writeHint(false, false); return showGate("setup"); }
+    if (!data.logged_in) { writeHint(true, false); return showGate("login"); }
+    writeHint(true, true);
     hideGate();
     await loadState();
   }
@@ -143,6 +167,7 @@
         return;
       }
       hideGate();
+      writeHint(true, true);
       await loadState();
       toast(setup ? "后台账号已创建，开始配置你的签到站点吧" : "登录成功", 3200);
     } catch (e) {
@@ -163,6 +188,7 @@
     $("settings").close();
     const { data } = await apiRaw("/auth/status");
     if (data) S.auth = data;
+    writeHint(true, false);   // 刚退出：下次进来直接画登录屏，不用先猜
     showGate("login");
     toast("已退出登录");
   }
@@ -197,7 +223,7 @@
     const q = ($("search").value || "").trim().toLowerCase();
     const f = $("filter").value;
     const g = $("groupFilter").value;
-    return currentSites().filter((site) => {
+    return sortSites(currentSites().filter((site) => {
       if (q && !(site.label.toLowerCase().includes(q) || site.key.toLowerCase().includes(q) || (site.group || "").toLowerCase().includes(q))) return false;
       if (g && g !== "all" && site.group !== g) return false;
       if (S.onlyTodo && site.configured) return false;
@@ -208,7 +234,19 @@
       if (f === "invalid") return state === "invalid";
       if (f === "unverified") return state === "unverified";
       return true;
-    });
+    }));
+  }
+
+  /* 排序。默认「已配置优先」：打开面板先看到自己在用的站点，没配的沉到后面。
+     sort 是稳定排序，所以同一档里仍然保持后端给的目录顺序，不会每次都跳来跳去。 */
+  function sortSites(sites) {
+    const list = sites.slice();
+    const byName = (a, b) => String(a.label || a.key).localeCompare(String(b.label || b.key), "zh-Hans-CN");
+    const byGroup = (a, b) => String(a.group || "其它").localeCompare(String(b.group || "其它"), "zh-Hans-CN");
+    if (S.sort === "name") return list.sort(byName);
+    if (S.sort === "group") return list.sort((a, b) => byGroup(a, b) || byName(a, b));
+    if (S.sort === "default") return list;
+    return list.sort((a, b) => Number(!!b.configured) - Number(!!a.configured));
   }
 
   function buildGroupFilter() {
@@ -226,6 +264,7 @@
   function render() {
     const sites = visibleSites();
     const box = $("sites");
+    $("bootHint").classList.add("hidden");   // 首帧的「正在读取站点列表…」用完就撤
     box.className = S.view === "list" ? "list" : "grid";
     box.innerHTML = sites.map(S.view === "list" ? siteRow : siteCard).join("");
     const hint = $("emptyHint");
@@ -308,7 +347,7 @@
     if (S.dirty[site.key]) meta.push("有未保存的改动");
 
     return `
-<article class="card" data-state="${state}" data-key="${site.key}">
+<article class="card${open ? " open" : ""}" data-state="${state}" data-key="${site.key}">
   <div class="card-head" data-action="toggle" data-key="${site.key}">
     ${logoHTML(site, false)}
     <span class="names"><b>${esc(site.label)}</b><span>${esc(site.key)}</span></span>
@@ -477,7 +516,7 @@
 
   function openSite(key) {
     S.view = "card";
-    localStorage.setItem("dc_view", "card");
+    lsSet("dc_view", "card");
     document.querySelectorAll("#viewSeg button").forEach((b) => b.classList.toggle("active", b.dataset.view === "card"));
     S.expanded.add(key);
     render();
@@ -849,6 +888,13 @@
     $("search").oninput = render;
     $("filter").onchange = render;
     $("groupFilter").onchange = render;
+    $("sortSelect").value = S.sort;
+    $("sortSelect").onchange = () => {
+      const v = $("sortSelect").value;
+      S.sort = SORT_MODES.includes(v) ? v : "configured";
+      lsSet("dc_sort", S.sort);
+      render();
+    };
     $("maskCookie").onchange = () => document.body.classList.toggle("masked", $("maskCookie").checked);
     $("btnOnlyTodo").onclick = () => {
       S.onlyTodo = !S.onlyTodo;
@@ -862,7 +908,7 @@
       b.classList.toggle("active", b.dataset.view === S.view);
       b.onclick = () => {
         S.view = b.dataset.view === "list" ? "list" : "card";
-        localStorage.setItem("dc_view", S.view);
+        lsSet("dc_view", S.view);
         document.querySelectorAll("#viewSeg button").forEach((x) => x.classList.toggle("active", x === b));
         render();
       };
@@ -946,6 +992,16 @@
 
   /* ---------------- 启动 ---------------- */
   bind();
+
+  // 「隐藏 cookie」是纯前端的显示偏好，开机就定下来：别等第一次 render 之后才加
+  // masked —— 那中间已经渲染出来的 cookie 是明文的。
+  document.body.classList.toggle("masked", $("maskCookie").checked);
+
+  // 上次登录过就直接进主界面骨架。脚本在 body 末尾同步执行，浏览器首帧之前就跑完了，
+  // 所以不会再闪一下登录页。这只是「先画什么」，真伪仍由 /auth/status 定论 ——
+  // 万一会话过期了，它会把我们打回登录屏，代价只是这一次多闪一下。
+  if (readHint().l === true) hideGate();
+
   gateCheck().catch((e) => {
     showGate("login", "初始化失败：" + e.message);
   });
