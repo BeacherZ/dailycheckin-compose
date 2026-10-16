@@ -32,9 +32,8 @@ RUN set -eux; \
     python -c "import dailycheckin, dailycheckin.configs as c; print('引擎自检通过，已加载', len(c.checkin_map), '个站点模块')"; \
     grep -q 'web-interface/newlist' "$(python -c 'import dailycheckin.bilibili.main as m; print(m.__file__)')"; \
     echo 'B 站接口修复已生效'; \
-    grep -q 'PROJECT_URL' "$(python -c 'import dailycheckin.main as m; print(m.__file__)')"; \
-    grep -q 'beacherz/dailycheckin-plus' "$(python -c 'import dailycheckin.utils.message as m; print(m.__file__)')"; \
-    grep -q 'dailycheckin-plus 每日签到' "$(python -c 'import dailycheckin.utils.message as m; print(m.__file__)')"; \
+    python -c "import pathlib as p; s = p.Path('dailycheckin/main.py').read_text(encoding='utf-8'); assert 'PROJECT_URL' in s and 'PROJECT_NAME' in s, 'main.py 的引擎元信息没跟上'; print('引擎元信息自检通过')"; \
+    python -c "import dailycheckin.utils.message as m; assert m.PROJECT_NAME == 'dailycheckin-plus', m.PROJECT_NAME; assert m.NOTICE_TITLE.endswith('每日签到') and m.PROJECT_NAME in m.NOTICE_TITLE, m.NOTICE_TITLE; assert m.PROJECT_URL.endswith('/dailycheckin-plus'), m.PROJECT_URL; print('通知模块自检通过：', m.NOTICE_TITLE, m.PROJECT_URL)"; \
     echo '通知模块修复已生效（恒定一条 + 标题带项目名 + 本项目地址）'; \
     cd / && rm -rf /build
 
