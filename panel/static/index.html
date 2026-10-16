@@ -123,8 +123,6 @@
   <span class="spacer"></span>
 
   <label class="switch"><input type="checkbox" id="maskCookie" checked> 隐藏 cookie</label>
-  <button class="ghost tiny" id="btnExpandAll">展开全部</button>
-  <button class="ghost tiny" id="btnCollapseAll">收起全部</button>
   <button class="ghost tiny" id="btnRefresh">
     <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M13.3 8a5.3 5.3 0 1 1-1.6-3.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M13.6 2.2v3.3h-3.3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
     刷新
@@ -138,6 +136,29 @@
 </main>
 
 </div>
+
+<!-- ==================== 站点配置弹窗 ====================
+     点卡片、或列表行里的「配置」，都开这一个弹窗。
+     以前是就地展开卡片：一排四张里那张横跨两列，把上面一行顶掉半行，右边还空出
+     一大片；卡片自己的高度也被撑得和同排不一样。改成弹窗之后，首屏永远是等高的
+     小卡，编辑区按弹窗宽度排版，两边都不再将就。
+     内容区 #siteDlgBody 上的 data-key 就是「当前在配哪个站点」——
+     app.js 里所有表单事件都靠它找到对应的站点，别再改成只在打开时传参。 -->
+<dialog id="siteDlg" aria-label="站点配置">
+  <div class="dlg-head">
+    <span class="sd-title" id="siteDlgTitle"></span>
+    <span class="spacer"></span>
+    <button class="ghost tiny" id="btnCloseSiteDlg">关闭</button>
+  </div>
+  <div class="dlg-body" id="siteDlgBody" data-key=""></div>
+  <div class="dlg-foot">
+    <span class="muted" id="siteDlgHint"></span>
+    <span class="spacer"></span>
+    <button class="tiny" id="siteDlgAdd" data-action="add">＋ 添加账号</button>
+    <button class="tiny" id="siteDlgRun" data-action="run">立即签到</button>
+    <button class="tiny primary" id="siteDlgSave" data-action="save">保存</button>
+  </div>
+</dialog>
 
 <div class="overlay" id="overlay"></div>
 

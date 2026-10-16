@@ -326,8 +326,10 @@ main { padding: 10px 22px 90px; }
 
 /* 卡片默认一行 4 张；窗口变窄依次降到 3 / 2 / 1，断点与下面的 .list 对齐，
    两种视图切换时不会一个挤一个松。
-   align-items: start 是必须的：同一行里只要有一张卡片展开，默认的 stretch 会把
-   旁边几张也拉到一样高，下面留一大片空白。 */
+   align-items: start 是必须的：卡片虽然现在都是等高的，但 meta 里站点返回的文案
+   长度差别很大，万一哪天真被撑开了，默认的 stretch 会把旁边几张一起拉高，
+   下面留一大片空白 —— 保持顶部对齐，让差异只暴露在那一张上。
+   卡片本身不再就地展开（编辑区在弹窗里），所以一排几列是固定的。 */
 .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; align-items: start; }
 
 /* ---- 卡片视图 ---- */
@@ -339,10 +341,8 @@ main { padding: 10px 22px 90px; }
   overflow: hidden;
   transition: box-shadow .18s, border-color .18s, transform .18s;
   position: relative;
+  cursor: pointer;
 }
-/* 展开配置的卡片横跨两列：概览仍然是「一眼四张」，改 cookie 的那块编辑区
-   宽度又和以前一行两张时差不多，不至于把 textarea 挤成一条。 */
-.card.open { grid-column: span 2; }
 .card:hover { box-shadow: var(--shadow-2); border-color: var(--line-2); transform: translateY(-1px); }
 /* 左侧一道细色条标状态。以前是 3px 实色 + 整卡描边跟着染色，绿边红边铺满一排
    看着像报错列表；现在只留 2px 的条，描边保持中性。 */
@@ -365,14 +365,14 @@ main { padding: 10px 22px 90px; }
 }
 .card-head .tag, .card-head .badge { flex: none; }
 
-/* 展开箭头：以前是字符 ▶，字重和基线都跟着字体跑；换成自绘 chevron */
-.card-head .chev { color: var(--fg-3); display: flex; flex: none; transition: transform .2s cubic-bezier(.32, .72, 0, 1); }
-.card-head .chev.open { transform: rotate(90deg); }
-.card-head:hover .chev { color: var(--fg-2); }
+/* 卡片右侧的箭头：点它 = 打开配置弹窗。以前是展开箭头（朝下、展开时转 90°），
+   现在是「进入」的意思（朝右、悬停时轻轻往右挪一下），不表示任何开合状态。 */
+.card-head .chev { color: var(--fg-3); display: flex; flex: none; transition: transform .18s, color .18s; }
+.card:hover .chev { color: var(--fg-2); transform: translateX(2px); }
 
 /* meta 固定一行：长度差别很大（B 站会多出「普通会员 | 硬币 1223 | 等级 5」这种尾巴），
    任它换行会把同排卡片顶得高低不齐。超出部分省略号收掉，完整内容挂在 title 上。
-   height 是写死的：17px 行高 + 13px 下间距 —— 这样未展开的卡片高度完全确定，一排齐平。 */
+   height 是写死的：17px 行高 + 13px 下间距 —— 这样卡片高度完全确定，一排齐平。 */
 .card-meta {
   display: block;
   height: 30px;
@@ -384,7 +384,6 @@ main { padding: 10px 22px 90px; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.card-body { padding: 14px 15px 15px; border-top: 1px solid var(--line); background: var(--surface-2); }
 
 /* ---- LOGO ---- */
 .logo {
@@ -485,7 +484,8 @@ main { padding: 10px 22px 90px; }
 details.extras { margin-top: 9px; }
 details.extras summary { cursor: pointer; font-size: 12px; color: var(--fg-2); user-select: none; }
 details.extras summary:hover { color: var(--fg); }
-details.extras .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 9px; margin-top: 9px; }
+/* 账号字段的网格：cookie 站点的可选参数和表单站点的必填参数共用一套排布 */
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 9px; margin-top: 9px; }
 
 .empty { text-align: center; color: var(--fg-3); padding: 64px 0; font-size: 13.5px; }
 .empty b { display: block; color: var(--fg-2); font-size: 15px; margin-bottom: 6px; }
@@ -534,11 +534,28 @@ dialog::backdrop { background: rgba(10, 14, 22, .5); backdrop-filter: blur(3px);
 .dlg-foot { display: flex; gap: 8px; justify-content: flex-end; padding: 13px 18px; border-top: 1px solid var(--line); }
 .section { margin-bottom: 22px; }
 .section:last-child { margin-bottom: 6px; }
+
 .section h4 { margin: 0 0 9px; font-size: 13.5px; }
 .section .tip { font-size: 12px; color: var(--fg-3); margin: 6px 0 0; line-height: 1.6; }
 /* 4 个一行的字段（后台账号）在宽弹窗里刚好排满，不留一个孤零零的半行 */
 .kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); gap: 10px; }
 .kv label { display: block; font-size: 12px; color: var(--fg-2); margin-bottom: 4px; }
+
+/* ---- 站点配置弹窗 ---- */
+/* 整块做成「头 / 可滚内容 / 底栏」三段的 flex：cookie 框再长也只滚中间那块，
+   底栏的「保存」永远在视线里，不用滚到底才能点。
+   注意必须写成 [open]：无条件 display:flex 会盖掉浏览器默认的
+   dialog:not([open]) { display: none }，弹窗一上来就摊在那儿。 */
+#siteDlg { width: min(780px, 94vw); }
+#siteDlg[open] { display: flex; flex-direction: column; max-height: 88vh; }
+#siteDlg .dlg-body { max-height: none; flex: 1; }
+#siteDlg .dlg-foot { justify-content: flex-start; }
+
+.sd-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.sd-title .names { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
+.sd-title .names b { font-size: 14.5px; letter-spacing: -.006em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sd-title .names span { font-size: 10.5px; color: var(--fg-3); font-family: var(--mono); letter-spacing: .045em; }
+.sd-title .tag, .sd-title .badge { flex: none; }
 
 .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); padding: 0 16px; }
 .tabs button { border: none; background: none; border-bottom: 2px solid transparent; border-radius: 0; padding: 9px 11px; color: var(--fg-3); font-weight: 500; }
@@ -580,7 +597,6 @@ dialog::backdrop { background: rgba(10, 14, 22, .5); backdrop-filter: blur(3px);
 }
 @media (max-width: 820px) {
   .grid { grid-template-columns: 1fr; }
-  .card.open { grid-column: auto; }   /* 单列时跨两列会溢出容器 */
 }
 @media (max-width: 720px) {
   header { padding: 11px 14px; gap: 12px; }
@@ -589,4 +605,8 @@ dialog::backdrop { background: rgba(10, 14, 22, .5); backdrop-filter: blur(3px);
   .search-wrap { width: 100%; }
   .actions { margin-left: 0; width: 100%; }
   .drawer { width: 100vw; }
+  /* 手机上弹窗铺满：编辑 cookie 时那点横向空间都要留给输入框
+     （dvh 不认识的老浏览器会忽略这一行，退回 88vh，不影响可用） */
+  #siteDlg { width: 100vw; max-height: 100dvh; border-radius: 0; }
+  #siteDlg .dlg-body { padding: 14px; }
 }

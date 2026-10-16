@@ -14,6 +14,9 @@
    硬币 1223 | 等级 5」这种尾巴），一旦允许它换行，那一张就会比同排高出一截
    （用户报的「第一个站点卡片比其他的高」）。所以 meta 固定单行 + 写死高度，
    完整文案挂到 title 上。
+5. **站点配置是弹窗，不是在卡片里就地展开**。就地展开那张卡会横跨两列，把一排
+   四个的节奏打乱、右边空出一大片（用户就是这么反馈的）。点卡片 = 打开
+   `#siteDlg`，卡片本身只有「logo + 站名 + 分类 + 状态 + 一行概况」。
 
 跑法：python3 tools/test_panel_static.py
 """
@@ -104,9 +107,7 @@ check("卡片有 3 / 2 / 1 列的降级",
       and "repeat(2, minmax(0, 1fr))" in media_block(1180)
       and ".grid { grid-template-columns: 1fr; }" in media_block(820))
 check("列表窄屏回单列", ".list { grid-template-columns: 1fr; }" in media_block(1180))
-check("单列布局下取消展开卡片的跨列", "grid-column: auto" in media_block(820))
-check("卡片展开时跨两列", re.search(r"\.card\.open\s*\{\s*grid-column: span 2", css) is not None)
-check("app.js 给展开的卡片加 open 类", 'class="card${open ? " open" : ""}"' in js)
+check("卡片不再就地展开（没有 .card.open 跨列）", ".card.open" not in css)
 
 print("5) 同排卡片等高：meta 固定单行")
 meta_css = rule(".card-meta")
@@ -131,6 +132,35 @@ check("顶栏按钮带内联图标", html.count("<button") >= 4 and 'id="btnRunA
 check("下拉框去掉了原生箭头（自绘 chevron）", "appearance: none" in css and "background-position: right 9px center" in css)
 check("开关是自绘滑块", ".switch input::after" in css)
 check("统计数字用等宽数字", "font-variant-numeric: tabular-nums" in css)
+
+print("7) 站点配置走弹窗，不再就地展开卡片")
+check("index.html 里有站点配置弹窗", re.search(r'<dialog id="siteDlg"', html) is not None)
+check("弹窗内容区带 data-key（表单事件靠它认站点）", re.search(r'id="siteDlgBody"[^>]*data-key', html) is not None)
+check("弹窗底栏有 添加 / 立即签到 / 保存 三个动作",
+      all(f'id="{i}"' in html for i in ("siteDlgAdd", "siteDlgRun", "siteDlgSave")))
+check("卡片整块可点（data-action=open + role=button，键盘也能进）",
+      'data-action="open" role="button" tabindex="0"' in js)
+check("列表行的「配置」按钮还在", 'data-action="open" data-key="${site.key}"' in js)
+check("就地展开的痕迹清干净了（.card.open / .card-body / S.expanded / toggle）",
+      ".card-body" not in css and "S.expanded" not in js and 'data-action="toggle"' not in js)
+check("工具条去掉了「展开全部 / 收起全部」", "btnExpandAll" not in html and "btnCollapseAll" not in html)
+check("用 showModal 打开、close 事件统一收尾",
+      "dlg.showModal()" in js and '.addEventListener("close", onSiteDialogClosed)' in js)
+check("弹窗的三段式布局必须限定 [open]（无条件 display:flex 会盖掉浏览器默认的 dialog:not([open]){display:none}，弹窗关不掉）",
+      re.search(r"#siteDlg\[open\]\s*\{[^}]*display:\s*flex", css) is not None)
+check("打开弹窗不再强制切回卡片视图（列表视图里也能直接配）", 'S.view = "card";' not in js)
+check("操作按钮在弹窗底栏而不是滚动的编辑区里（改 cookie 时「保存」始终看得见）",
+      re.search(r'class="dlg-foot">[\s\S]{0,600}?data-action="save"', html) is not None)
+check("提示会搬进打开的弹窗里（原生 dialog 在顶层，页面上的提示会被盖住）",
+      'document.querySelector("dialog[open]")' in js)
+check("「立即签到」先关弹窗再开日志抽屉（抽屉排在弹窗下面，不关就看不见）",
+      re.search(r'action === "run"\)\s*\{\s*closeSite\(\)', js) is not None)
+check("卡片右侧箭头表示「进入」而不是「展开」（没有旋转态）", ".chev.open" not in css)
+check("表单类站点的字段直接摊开（不再藏进「其它参数（可选）」折叠条里，"
+      "否则新建账号后连账号密码框都找不到）",
+      re.search(r'site\.credential === "cookie"\s*\?\s*`<details class="extras"', js) is not None)
+check("cookie 类站点的可选参数仍然收在折叠条里",
+      "其它参数（${(site.fields || []).length} 项，可选）" in js)
 
 print("=" * 66)
 print(f"通过 {len(passed)}  失败 {len(failed)}")

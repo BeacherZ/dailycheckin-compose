@@ -29,7 +29,7 @@
     drafts: {},      // 站点 KEY -> 账号数组（前端草稿）
     checks: {},      // 站点 KEY -> 每账号的本地体检结果
     dirty: {},       // 站点 KEY -> 是否有未保存改动
-    expanded: new Set(),
+    dlgKey: null,    // 当前打开的站点配置弹窗（null = 没开）
     view: lsGet("dc_view") === "list" ? "list" : "card",
     sort: SORT_MODES.includes(lsGet("dc_sort")) ? lsGet("dc_sort") : "configured",
     onlyTodo: false,
@@ -78,6 +78,11 @@
     const el = $("toast");
     let timer = null;
     return (msg, ms = 2600) => {
+      // 原生 <dialog> 打开时，整个页面的内容（包括固定定位的提示）都排在它的下面
+      // —— 弹窗里点「保存」看不到反馈就等于没反应。把提示挪进当前弹窗，它就跟着
+      // 一起进顶层了；弹窗关掉时再搬回 body（见站点弹窗的 close 监听）。
+      const host = document.querySelector("dialog[open]") || document.body;
+      if (el.parentNode !== host) host.appendChild(el);
       el.textContent = msg;
       el.classList.add("show");
       clearTimeout(timer);
@@ -185,7 +190,7 @@
     S.drafts = {};
     S.checks = {};
     S.dirty = {};
-    S.expanded.clear();
+    closeSite();
     $("settings").close();
     const { data } = await apiRaw("/auth/status");
     if (data) S.auth = data;
@@ -273,6 +278,9 @@
     hint.innerHTML = sites.length
       ? ""
       : `<b>没有匹配的站点</b>换个关键词，或把筛选条件放宽一点<br><button class="tiny" style="margin-top:12px" data-action="reset-filter">清空筛选条件</button>`;
+    // 弹窗可能正开着（保存 / 校验过之后会重新拉一次 state），内容要跟着刷新；
+    // 如果这个站点被筛掉了、或者干脆没了，paintSiteDialog 会自己把弹窗关掉。
+    if (S.dlgKey) paintSiteDialog();
     paintHeader();
   }
 
@@ -335,8 +343,9 @@
     return `<span class="${cls}"><img src="${esc(site.logo)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentNode.classList.add('broken')">${fallback}</span>`;
   }
 
+  /* 卡片是「一眼看清状态」的瓷砖：点哪儿都开配置弹窗，自己不改高度、不参与布局变化。
+     整张卡可点（不只是标题行），所以给了 role/tabindex，键盘也能进（见 bind()）。 */
   function siteCard(site) {
-    const open = S.expanded.has(site.key);
     const accounts = S.drafts[site.key] || [];
     const state = (site.status && site.status.state) || "unverified";
     const meta = [];
@@ -351,17 +360,16 @@
     const metaText = meta.join(" · ");
 
     return `
-<article class="card${open ? " open" : ""}" data-state="${state}" data-key="${site.key}">
-  <div class="card-head" data-action="toggle" data-key="${site.key}">
+<article class="card" data-state="${state}" data-key="${site.key}" data-action="open" role="button" tabindex="0" title="配置 ${esc(site.label)}">
+  <div class="card-head">
     ${logoHTML(site, false)}
     <span class="names"><b>${esc(site.label)}</b><span>${esc(site.key)}</span></span>
     <span class="spacer"></span>
     <span class="tag">${esc(site.group || "其它")}</span>
     ${statusBadge(site)}
-    <span class="chev ${open ? "open" : ""}" aria-hidden="true">${CHEVRON}</span>
+    <span class="chev" aria-hidden="true">${CHEVRON}</span>
   </div>
   <div class="card-meta" title="${esc(metaText)}">${esc(metaText)}</div>
-  ${open ? bodyHTML(site, accounts) : ""}
 </article>`;
   }
 
@@ -371,8 +379,9 @@
     const link = site.site
       ? `<a class="ghost tiny" href="${esc(site.site)}" target="_blank" rel="noopener noreferrer" style="color:var(--fg-2);text-decoration:none;font-size:12px">官网</a>`
       : "";
+    // 整行也能点开配置；行里的「官网」是链接，点击时会被 click 处理器放行（见下）
     return `
-<article class="row-item" data-state="${state}" data-key="${site.key}">
+<article class="row-item" data-state="${state}" data-key="${site.key}" data-action="open" title="配置 ${esc(site.label)}">
   ${logoHTML(site, true)}
   <span class="ri-name"><b>${esc(site.label)}</b><span>${esc(site.key)}</span></span>
   <span class="ri-group"><span class="tag">${esc(site.group || "其它")}</span></span>
@@ -382,33 +391,25 @@
 </article>`;
   }
 
-  function bodyHTML(site, accounts) {
-    const req = (site.required || []).length
-      ? `<span class="req">必填：${site.required.map(esc).join("、")}</span>`
-      : `<span class="opt">无强制字段</span>`;
+  /* 弹窗里的内容：怎么拿 cookie + 凭据类型 + 每个账号一块。
+     操作按钮不在这里 —— 它们在弹窗底栏，滚动编辑区时始终可见。 */
+  function dlgBodyHTML(site, accounts) {
     const blocks = accounts.length
       ? accounts.map((acc, i) => accountHTML(site, acc, i)).join("")
-      : `<p class="muted" style="font-size:12.5px;margin-bottom:10px">还没有账号，点下面的「添加账号」。</p>`;
+      : `<p class="muted" style="font-size:12.5px;margin-bottom:10px">还没有账号，点右下角的「＋ 添加账号」。</p>`;
     const link = site.site
       ? `　<a href="${esc(site.site)}" target="_blank" rel="noopener noreferrer">打开官网登录 ↗</a>`
       : "";
+    // 必填字段只写在账号的字段标签上（那里离输入框最近）；这一行只说「这是个什么凭据」，
+    // 同一个信息出现两次只会让人多读一遍。
     return `
-<div class="card-body">
   ${site.howto ? `<div class="howto"><b>怎么拿 cookie：</b>${esc(site.howto)}${link}</div>` : ""}
   <div class="row" style="margin:0 0 6px">
     <span class="muted" style="font-size:12px">凭据类型：${site.credential === "cookie" ? "Cookie" : "账号 / 表单"}</span>
-    <span class="muted" style="font-size:12px">${req}</span>
     ${site.verify ? "" : `<span class="badge unknown">无在线校验接口</span>`}
     ${site.known === false ? `<span class="badge unknown" title="上游新加的站点，本项目还没为它单独写元数据：不会提示必填字段、LOGO 退回 emoji，签到与保存都正常">通用配置</span>` : ""}
   </div>
-  ${blocks}
-  <div class="row">
-    <button class="tiny" data-action="add" data-key="${site.key}">＋ 添加账号</button>
-    <span class="spacer"></span>
-    <button class="tiny" data-action="run" data-key="${site.key}">立即签到</button>
-    <button class="tiny primary" data-action="save" data-key="${site.key}">保存</button>
-  </div>
-</div>`;
+  ${blocks}`;
   }
 
   function accountHTML(site, account, index) {
@@ -438,6 +439,16 @@
            <div class="check ${check ? (check.ok ? "ok" : "bad") : ""}" data-role="check">${checkHTML(check)}</div>`
         : "";
 
+    // 这些字段的定位随凭据类型变：表单类站点的字段**就是**凭据（账号密码、token…），
+    // 必须直接摊开；cookie 类站点的字段只是可选补充项，收进 <details> 免得抢戏。
+    // 以前一律塞进折叠区，结果表单类站点新建一个账号后打开是一片「其它参数（可选）」
+    // 折叠条 —— 想输账号密码还得先点开，等于凭空多一步。
+    const fieldsBlock = !extras
+      ? ""
+      : site.credential === "cookie"
+        ? `<details class="extras" ${hasNonEmpty(account, site) ? "open" : ""}><summary>其它参数（${(site.fields || []).length} 项，可选）</summary><div class="grid2">${extras}</div></details>`
+        : `<div class="field-label">参数 ${reqLabel(site) || ""}</div><div class="grid2">${extras}</div>`;
+
     return `
 <div class="account" data-index="${index}">
   <div class="acc-head">
@@ -446,7 +457,7 @@
     <button class="ghost tiny" data-action="remove" data-key="${site.key}" data-index="${index}">删除</button>
   </div>
   ${cookieBlock}
-  ${extras ? `<details class="extras" ${hasNonEmpty(account, site) ? "open" : ""}><summary>其它参数（${(site.fields || []).length} 项，可选）</summary><div class="grid2">${extras}</div></details>` : ""}
+  ${fieldsBlock}
 </div>`;
   }
 
@@ -488,7 +499,7 @@
   }
 
   /* ======================================================================
-     卡片交互
+     卡片交互 / 站点配置弹窗
      ====================================================================== */
   function findSite(key) { return currentSites().find((s) => s.key === key); }
   function draftOf(key) {
@@ -496,42 +507,89 @@
     return S.drafts[key];
   }
 
-  function repaintCard(key) {
+  /* 同一份数据有两处 DOM：网格里的卡片（概览）和弹窗（编辑区）。
+     卡片可以整块换掉（简单），弹窗里的表单正在被编辑，只能就地重画内容区。 */
+  function repaintSite(key) {
     const site = findSite(key);
     if (!site) return;
-    const html = S.view === "list" ? siteRow(site) : siteCard(site);
-    const el = document.querySelector(`[data-key="${key}"]`);
-    if (!el) return render();
-    const wrapper = document.createElement("div");
-    wrapper.innerHTML = html;
-    el.replaceWith(wrapper.firstElementChild);
+    // 限定在 #sites 里找：弹窗内容区也带 data-key，不限定的话会误抓弹窗那个
+    const el = document.querySelector(`#sites [data-key="${key}"]`);
+    if (!el) {
+      render();
+    } else {
+      const wrapper = document.createElement("div");
+      wrapper.innerHTML = S.view === "list" ? siteRow(site) : siteCard(site);
+      el.replaceWith(wrapper.firstElementChild);
+    }
+    if (S.dlgKey === key) paintSiteDialog();
   }
 
-  function refreshCardFooter(key) {
-    if (S.view === "list") return;
-    const card = document.querySelector(`.card[data-key="${key}"]`);
-    if (!card) return;
-    const accounts = draftOf(key);
-    const meta = [accounts.length ? `${accounts.length} 个账号` : "未配置"];
-    if (S.dirty[key]) meta.push("有未保存的改动");
-    const el = card.querySelector(".card-meta");
-    if (el) {
-      el.textContent = meta.join(" · ");
-      el.title = el.textContent;
-    }
+  /* 弹窗内容整个从「当前草稿」重画，所以加账号 / 删账号之后重新渲染也不会丢用户
+     刚输入的 cookie —— 草稿才是唯一数据源，DOM 只是它的投影。 */
+  function dlgHint(key) {
+    const n = draftOf(key).length;
+    return `${n ? n + " 个账号" : "还没有账号"}${S.dirty[key] ? " · 有未保存的改动" : ""}`;
+  }
+
+  function paintSiteDialog() {
+    const key = S.dlgKey;
+    const site = key && findSite(key);
+    if (!site) { closeSite(); return; }
+    $("siteDlgTitle").innerHTML = `${logoHTML(site, true)}
+      <span class="names"><b>${esc(site.label)}</b><span>${esc(site.key)}</span></span>
+      <span class="tag">${esc(site.group || "其它")}</span>${statusBadge(site)}`;
+    const body = $("siteDlgBody");
+    body.dataset.key = key;
+    body.innerHTML = dlgBodyHTML(site, draftOf(key));
+    $("siteDlgHint").textContent = dlgHint(key);
+    ["siteDlgAdd", "siteDlgRun", "siteDlgSave"].forEach((id) => ($(id).dataset.key = key));
   }
 
   function openSite(key) {
-    S.view = "card";
-    lsSet("dc_view", "card");
-    document.querySelectorAll("#viewSeg button").forEach((b) => b.classList.toggle("active", b.dataset.view === "card"));
-    S.expanded.add(key);
-    render();
-    const el = document.querySelector(`.card[data-key="${key}"]`);
-    if (el) el.scrollIntoView({ block: "center", behavior: "smooth" });
+    S.dlgKey = key;
+    const dlg = $("siteDlg");
+    // 已经把某个站点的弹窗开着时再点另一张卡：内容换掉即可，别关掉再开（会闪一下）
+    if (!dlg.open) dlg.showModal();
+    paintSiteDialog();
+  }
+
+  /* 关闭只走这一条路：Esc、点遮罩、点「关闭」都最终触发 close 事件，
+     收尾（清 key、把提示搬回 body）统一挂在那个监听里，免得漏。 */
+  function closeSite() {
+    const dlg = $("siteDlg");
+    if (dlg.open) dlg.close();
+  }
+
+  function onSiteDialogClosed() {
+    S.dlgKey = null;
+    const body = $("siteDlgBody");
+    body.innerHTML = "";
+    body.dataset.key = "";
+    if ($("toast").parentNode !== document.body) document.body.appendChild($("toast"));
+  }
+
+  function refreshCardFooter(key) {
+    const el = document.querySelector(`#sites [data-key="${key}"] .card-meta`);
+    if (el) {
+      const accounts = draftOf(key);
+      const meta = [accounts.length ? `${accounts.length} 个账号` : "未配置"];
+      if (S.dirty[key]) meta.push("有未保存的改动");
+      el.textContent = meta.join(" · ");
+      el.title = el.textContent;
+    }
+    if (S.dlgKey === key) $("siteDlgHint").textContent = dlgHint(key);
+  }
+
+  /* 编辑区（表单）当前在哪：弹窗开着就是弹窗，否则是网格里的那张卡。
+     规范化的结果显示、新增账号后的聚焦都要落在这块里。 */
+  function editScope(key) {
+    if (S.dlgKey === key) return $("siteDlgBody");
+    return document.querySelector(`#sites [data-key="${key}"]`);
   }
 
   document.addEventListener("click", async (ev) => {
+    // 卡片和列表行整块可点，但里面的「官网」是真链接 —— 别把跳转吃掉。
+    if (ev.target.closest("a")) return;
     const btn = ev.target.closest("[data-action]");
     if (!btn) return;
     const action = btn.dataset.action;
@@ -548,13 +606,6 @@
       return;
     }
 
-    if (action === "toggle") {
-      if (S.expanded.has(key)) S.expanded.delete(key);
-      else S.expanded.add(key);
-      repaintCard(key);
-      return;
-    }
-
     if (action === "open") { openSite(key); return; }
 
     if (action === "add") {
@@ -564,9 +615,13 @@
       S.drafts[key] = [...draftOf(key), blank];
       S.checks[key] = [...(S.checks[key] || []), null];
       S.dirty[key] = true;
-      repaintCard(key);
-      const el = document.querySelector(`[data-key="${key}"] textarea[data-field=cookie]`);
-      if (el) el.focus();
+      repaintSite(key);
+      // 光标直接落到刚加的那个（空）输入框上，粘贴就完事。
+      // 只聚焦新加的这块：老账号的 cookie 框一聚焦就会解除遮蔽，等于把明文摊开。
+      const scope = editScope(key);
+      const n = draftOf(key).length - 1;
+      const box = scope && scope.querySelector(`.account[data-index="${n}"] textarea, .account[data-index="${n}"] input`);
+      if (box) box.focus();
       return;
     }
 
@@ -574,7 +629,7 @@
       S.drafts[key] = draftOf(key).filter((_, i) => i !== index);
       S.checks[key] = (S.checks[key] || []).filter((_, i) => i !== index);
       S.dirty[key] = true;
-      repaintCard(key);
+      repaintSite(key);
       return;
     }
 
@@ -587,7 +642,7 @@
         account.cookie = r.cookie || account.cookie;
         (S.checks[key] || [])[index] = r;
         S.dirty[key] = true;
-        repaintCard(key);
+        repaintSite(key);
         toast(`已规范化：${r.count} 个字段（来源：${r.source}）`);
       } catch (e) { toast(e.message); } finally { btn.disabled = false; }
       return;
@@ -607,7 +662,7 @@
             message: (r.results || []).map((x) => x.message).join("；"),
           };
         }
-        repaintCard(key);
+        repaintSite(key);
         const map = { valid: "cookie 有效", invalid: "cookie 已失效", unknown: "无法判定", unverified: "没有配置账号" };
         toast(`${site ? site.label : key}：${map[r.state] || r.state}`);
       } catch (e) { toast(e.message); } finally { btn.disabled = false; btn.textContent = "校验 cookie"; }
@@ -615,7 +670,8 @@
     }
 
     if (action === "save") { await saveSite(key); return; }
-    if (action === "run") { await startRun([key]); return; }
+    // 「立即签到」：先收起弹窗再开运行面板 —— 抽屉在弹窗（顶层）之下，不关掉就看不见输出
+    if (action === "run") { closeSite(); await startRun([key]); return; }
   });
 
   document.addEventListener("input", (ev) => {
@@ -664,7 +720,8 @@
       try {
         const r = await api("/cookies/normalize", { method: "POST", body: { raw: account.cookie, site: key } });
         (S.checks[key] || [])[index] = r;
-        const accEl = document.querySelector(`.card[data-key="${key}"] .account[data-index="${index}"]`);
+        const scope = editScope(key);
+        const accEl = scope && scope.querySelector(`.account[data-index="${index}"]`);
         if (!accEl) return;
         const box = accEl.querySelector('[data-role="check"]');
         const cnt = accEl.querySelector('[data-role="count"]');
@@ -890,8 +947,10 @@
     $("btnDrawerClose").onclick = closeDrawer;
     $("overlay").onclick = closeDrawer;
     $("btnClearConsole").onclick = () => { $("console").textContent = ""; };
-    $("btnExpandAll").onclick = () => { visibleSites().forEach((s) => S.expanded.add(s.key)); render(); };
-    $("btnCollapseAll").onclick = () => { S.expanded.clear(); render(); };
+    $("btnCloseSiteDlg").onclick = closeSite;
+    $("siteDlg").addEventListener("close", onSiteDialogClosed);
+    // 点弹窗外面那块变暗的区域关掉它（原生 dialog 的遮罩点击落在 dialog 自己身上）
+    $("siteDlg").addEventListener("click", (ev) => { if (ev.target === $("siteDlg")) closeSite(); });
     $("search").oninput = render;
     $("filter").onchange = render;
     $("groupFilter").onchange = render;
@@ -986,11 +1045,23 @@
     };
 
     document.addEventListener("keydown", (ev) => {
+      // 卡片是 role=button：回车 / 空格要能打开配置弹窗
+      if ((ev.key === "Enter" || ev.key === " ") && !ev.repeat) {
+        const card = ev.target.closest && ev.target.closest('[data-action="open"][role="button"]');
+        if (card) {
+          ev.preventDefault();
+          openSite(card.dataset.key);
+          return;
+        }
+      }
       if (ev.key === "Escape") {
-        closeDrawer();
+        // 站点弹窗开着时 Esc 归它自己（原生 dialog 会关），别再顺手把抽屉也关了
+        if (!$("siteDlg").open) closeDrawer();
         return;
       }
-      if (ev.key === "/" && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName) && !$("app").classList.contains("hidden")) {
+      const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+      // 弹窗开着时不抢「/」：焦点在弹窗里也搜不到背后的列表，白闪一下反而奇怪
+      if (ev.key === "/" && !typing && !document.querySelector("dialog[open]") && !$("app").classList.contains("hidden")) {
         ev.preventDefault();
         $("search").focus();
       }
