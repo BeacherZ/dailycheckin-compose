@@ -32,7 +32,7 @@ RUN set -eux; \
     python -c "import dailycheckin, dailycheckin.configs as c; print('引擎自检通过，已加载', len(c.checkin_map), '个站点模块')"; \
     grep -q 'web-interface/newlist' "$(python -c 'import dailycheckin.bilibili.main as m; print(m.__file__)')"; \
     echo 'B 站接口修复已生效'; \
-    grep -q 'beacherz/dailycheckin-compose' "$(python -c 'import dailycheckin.main as m; print(m.__file__)')"; \
+    grep -q 'PROJECT_URL' "$(python -c 'import dailycheckin.main as m; print(m.__file__)')"; \
     grep -q 'beacherz/dailycheckin-compose' "$(python -c 'import dailycheckin.utils.message as m; print(m.__file__)')"; \
     echo '通知模块修复已生效（恒定一条 + 标题 + 本项目地址）'; \
     cd / && rm -rf /build
