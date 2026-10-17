@@ -282,6 +282,30 @@ check("远端提交和本地提交都认得出才敢下「要不要更新」的�
 check("检查结果有缓存（GitHub 匿名接口 60 次/小时，不能当心跳打）",
       "CACHE_TTL = 3 * 3600" in update_src)
 
+print("11) 引擎报错翻译成一句人话")
+# 引擎抛的异常原文经常让人以为「面板坏了」。这几种是一眼能翻译的，顺手补一句。
+from panel import runner  # noqa: E402
+
+empty_json = runner.explain_error("Expecting value: line 1 column 1 (char 0)")
+check("空响应/非 JSON → 提示风控或限流", "风控" in empty_json and "Expecting value" in empty_json, empty_json)
+check("算术类型错 → 提示去配置点一次保存",
+      "点一次保存" in runner.explain_error("unsupported operand type(s) for -: 'str' and 'int'"))
+check("连不上 → 提示网络问题",
+      "连不上" in runner.explain_error("HTTPSConnectionPool(host='api.bilibili.com', port=443)"))
+check("认不出来的异常原样返回（别乱加话）",
+      runner.explain_error("some brand new error") == "some brand new error")
+# 翻译必须发生在解析输出那一步，否则面板的状态卡片和通知里还是原文
+out = runner.parse_output([
+    "----------开始执行「Bilibili」签到----------",
+    "第 1 个账号: ❌❌❌❌❌",
+    "Expecting value: line 1 column 1 (char 0)",
+])
+check("站点结果里的 message 已经翻译过",
+      bool(out) and "风控" in out[0]["message"], str(out)[:120])
+check("提示保持一句话（会进通知正文，不能写成长篇）",
+      all(len(h) < 60 for _n, h in runner.ERROR_HINTS),
+      [len(h) for _n, h in runner.ERROR_HINTS])
+
 print("=" * 66)
 print(f"通过 {len(passed)}  失败 {len(failed)}")
 for one in failed:

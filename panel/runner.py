@@ -34,6 +34,28 @@ FAIL_RE = re.compile(r"❌")
 SUMMARY_LINE_RE = re.compile(r"^(.+?)\s*账号数\s*:\s*(\d+)\s*$")
 MAX_LINES = 4000
 
+# 引擎抛的异常原文对用户没意义，但下面这几种一看就知道该怎么办，顺手翻译一下。
+# 加的时候注意：这些提示会进通知正文，**保持一句话**，别写成长篇。
+ERROR_HINTS = (
+    ("Expecting value",
+     "目标站点返回了空响应而不是 JSON，多半被风控或限流了 —— 隔 10~30 分钟再试，别连着重跑"),
+    ("unsupported operand type",
+     "配置里的数字字段被存成了字符串，去该站点的配置点一次保存"),
+    ("Connection aborted", "连接被目标站点断开，过一会儿再试"),
+    ("HTTPSConnectionPool", "连不上目标站点（网络不通，或站点不可达）"),
+    ("Max retries exceeded", "连不上目标站点（网络不通，或站点不可达）"),
+    ("Read timed out", "目标站点响应超时，过一会儿再试"),
+    ("SSLError", "TLS 握手失败，检查容器网络或代理设置"),
+)
+
+
+def explain_error(text: str) -> str:
+    """把引擎的异常原文补一句人话（认不出来就原样返回）。"""
+    for needle, hint in ERROR_HINTS:
+        if needle in text:
+            return f"{text}（{hint}）"
+    return text
+
 
 # --------------------------------------------------------------------------- #
 # 状态持久化
@@ -297,7 +319,7 @@ def parse_output(lines: list[str]) -> list[dict]:
             pending = True
         elif pending and line.strip():
             prefix = "；" if current["message"] else ""
-            current["message"] += prefix + line.strip()
+            current["message"] += prefix + explain_error(line.strip())
             pending = False
         if len(current["lines"]) > 200:
             del current["lines"][:100]
