@@ -153,6 +153,8 @@ python tools/sync_upstream.py --ref 25.12.9   # 指定 tag / 分支 / commit
 
 它会下载上游源码、替换 `dailycheckin/`、**重放 `patches/` 里的本地补丁**、更新 `UPSTREAM.json`，并报告站点增减。补丁打不上就整体回滚，绝不留下改了一半的引擎 —— 所以**别手工把上游目录盖过来**，那会悄悄抹掉补丁。仓库 **Actions → sync upstream → Run workflow** 也能点一下自动同步并重建镜像。
 
+**同步完仓库不等于容器换了新引擎**：容器用的是镜像，得再 `docker compose pull && docker compose up -d`。想知道自己这台跑的是哪版，看设置页「关于本项目」的构建提交。
+
 两个本地补丁：`0001` 修 B 站分区接口（上游接口下线导致 `AttributeError`，已提 [PR #592](https://github.com/Sitoi/dailycheckin/pull/592)，上游合并后删掉即可）、`0002` 把通知改成恒定一条。
 
 离线自测（不需要网络）：`python tools/test_sync_upstream.py`（补丁重放 / 冲突回滚）、`tools/test_notice.py`（通知一条）、`tools/test_schedule.py`（crontab 托管区块）、`tools/test_panel_static.py`（前端契约）。
