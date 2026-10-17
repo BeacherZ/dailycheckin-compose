@@ -297,7 +297,12 @@ def h_save_accounts(h):
                 account["cookie"] = result.cookie
                 account["_normalized"] = result.ok
             else:
-                account[field_key] = value
+                # 按 catalog 的字段类型转一次再落盘：int 字段存成字符串会让引擎
+                # 在做算术时抛 TypeError，把整个站点任务打断（见 catalog.coerce_field）。
+                try:
+                    account[field_key] = catalog.coerce_field(key, field_key, value)
+                except ValueError as exc:
+                    raise HttpError(400, str(exc))
         if any(str(v or "").strip() for k, v in account.items() if not str(k).startswith("_")):
             cleaned.append({k: v for k, v in account.items() if not str(k).startswith("_")})
     data = store.load()

@@ -36,6 +36,17 @@ def check(name, cond, detail=""):
     print(f"  [{'OK' if cond else 'FAIL'}]   {name}" + (f"  :: {detail}" if not cond else ""))
 
 
+def _raises(fn):
+    """跑一下，抛 ValueError 就算通过（用来断言「该拒绝的会拒绝」）。"""
+    try:
+        fn()
+    except ValueError:
+        return True
+    except Exception:
+        return False
+    return False
+
+
 def read(name):
     with open(os.path.join(STATIC, name), encoding="utf-8") as f:
         return f.read()
@@ -226,7 +237,30 @@ check("简版的 /api/state 不会把已查到的结论抹掉", "info.checked_at
 
 print("10) 更新检查的后端契约（离线，只读源码）")
 sys.path.insert(0, ROOT)
-from panel import store, update  # noqa: E402
+from panel import catalog, store, update  # noqa: E402
+
+# ---- 数字类字段必须落成数字 ----
+# 真实踩过：面板把 B 站的「投币数量」存成字符串 "5"，引擎算 `"5" - 今天已投个数`
+# 直接 TypeError，整个站点任务在投币那一步之前就断了（❌❌❌❌❌ + unsupported operand）。
+check("int 字段：字符串 \"5\" 转成数字 5", catalog.coerce_field("BILIBILI", "coin_num", "5") == 5)
+check("int 字段：已经是数字就原样返回",
+      catalog.coerce_field("BILIBILI", "coin_num", 5) == 5)
+check("int 字段：空值退回该字段的 default",
+      catalog.coerce_field("BILIBILI", "coin_num", "") == 0)
+check("int 字段：布尔值不算合法整数（bool 是 int 的子类，得先挡掉）",
+      _raises(lambda: catalog.coerce_field("BILIBILI", "coin_num", True)))
+check("int 字段：填了非整数就报错，别静默写成 0",
+      _raises(lambda: catalog.coerce_field("BILIBILI", "coin_num", "五")))
+check("int 字段：coin_type 同样处理",
+      catalog.coerce_field("BILIBILI", "coin_type", "0") == 0)
+check("bool 字段：认 \"true\" / \"1\" 这些字符串写法",
+      catalog.coerce_field("BILIBILI", "silver2coin", "true") is True
+      and catalog.coerce_field("BILIBILI", "silver2coin", "0") is False)
+check("catalog 没声明的键原样透传（不误伤 cookie 之类的自由字段）",
+      catalog.coerce_field("BILIBILI", "something_new", "5") == "5")
+check("convert 发生在落盘之前（server 调用的是 catalog.coerce_field）",
+      "catalog.coerce_field(key, field_key, value)" in
+      open(os.path.join(ROOT, "panel", "server.py"), encoding="utf-8").read())
 
 groups = store.notice_groups()
 keys = [f["key"] for g in groups for f in g["fields"]]

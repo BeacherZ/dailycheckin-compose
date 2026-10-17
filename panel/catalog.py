@@ -360,3 +360,49 @@ def required_of(key: str) -> list[str]:
 
 def has_required(items, key: str) -> list[str]:
     return ck.missing_required(items, required_of(key))
+
+
+def coerce_field(key: str, field_key: str, value):
+    """按 catalog 里声明的字段类型转换表单值（目前只有 int / bool 真的会转）。
+
+    **为什么非转不可**：引擎会直接拿这些值做算术 —— B 站模块是
+    `coin_num = coin_num - 今天已投的个数`。面板的输入框一律是 text，
+    原样写回就是字符串 "5"，于是引擎抛
+    `TypeError: unsupported operand type(s) for -: 'str' and 'int'`，
+    **整个站点任务在投币那一步之前就断了**（日志表现为「第 1 个账号: ❌❌❌❌❌」
+    后面跟一行 TypeError，投币 / 观看 / 分享全都没跑）。
+    所以类型转换必须发生在写 config.json 之前，且以后端为准（不管前端怎么传）。
+
+    空值退回该字段的 default；填了非整数就抛 ValueError（由调用方转成 400），
+    绝不静默写成 0 —— 那样用户会以为配好了，实际是把功能关了。
+    """
+    meta = next(
+        (f for f in (site_meta(key).get("fields") or []) if f.get("key") == field_key),
+        None,
+    )
+    if not meta:
+        return value
+    kind = meta.get("type")
+    label = meta.get("label") or field_key
+
+    if kind == "int":
+        if isinstance(value, bool):          # bool 是 int 的子类，必须先挡掉
+            raise ValueError("「%s」要填整数" % label)
+        if isinstance(value, int):
+            return value
+        text = str(value if value is not None else "").strip()
+        if text == "":
+            return meta.get("default", 0)
+        try:
+            return int(text, 10)
+        except (TypeError, ValueError):
+            raise ValueError("「%s」要填整数（现在是「%s」）" % (label, text))
+
+    if kind == "bool":
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(value)
+        return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+    return value
